@@ -1,0 +1,121 @@
+.body {
+  font-family: 'Roboto', sans-serif;
+  background-color: white;
+  padding: 0;
+}
+
+.shiny-output-error { 
+  visibility: hidden; 
+  
+}
+
+.shiny-output-error:before { 
+  visibility: hidden; 
+}
+  
+.well {
+  background-color: white;
+}
+
+.form-control {
+  border-radius: 10px;
+}
+
+.navbar {
+  font-family: 'Roboto', sans-serif;
+  background-color: white;
+  position: relative;
+  min-height: 50px;
+  margin-bottom: 0;
+  border: 1px solid transparent;
+  color: #1F417D;
+}
+
+.navbar-default .navbar-nav>.active>a {
+  font-family: 'Roboto', sans-serif;
+  color: #1F417D;
+    background-color: white;
+}
+
+.navbar-default .navbar-brand {
+  font-family: 'Roboto', sans-serif;
+  color: #1F417D;
+    background-color: white;
+  padding: 2px 10px 2px 10px;
+}
+
+h1, h2, h3, h4, h5, p {
+  font-family: 'Roboto', sans-serif;
+  color: #1F417D;
+}
+
+
+h1 {
+  font-size: 1.4em;
+}
+
+h2 {
+  font-size: 1.2em;
+}
+
+h3 {
+  font-size: 1.1em;
+}
+
+h4 {
+  font-size: 1.0em;
+}
+
+h5 {
+  font-size: 0.9em;
+}
+
+p {
+  font-size: 0.9em;
+}
+
+label {
+  font-family: 'Roboto', sans-serif;
+  font-weight: normal;
+  font-size: 0.9em;
+}
+
+outer {
+  margin: 0px;
+  padding: 0px;
+}
+
+.leaflet-container {
+  background: transparent !important;
+}
+
+.form-group {
+  height: auto !important;
+  margin-top: -15px !important;
+  padding-top: 0px !important;
+  margin-bottom: 0px;
+  padding-bottom: 0;
+}
+
+table.dataTable {
+  font-size: 12px;
+}
+
+.selectize-input 
+{
+   max-width: 700px; /* or whatever width you want. */
+   display: inline-block;
+}
+
+.shiny-output-error { 
+  visibility: hidden; 
+}
+
+.shiny-output-error:before { 
+  visibility: hidden; 
+}
+
+.leaflet-marker-pane {
+  z-index: 1000 !important;
+}
+

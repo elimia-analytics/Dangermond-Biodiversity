@@ -33,48 +33,52 @@ dir.create("data")
 ```
 
 # Get GIS boundary layers for target areas
-## Get Dangermond Preserve data
+## Get Dangermond Preserve boundary
 ```{r, include = FALSE, echo = FALSE}
 dangermond_preserve <- esri2sf::esri2sf("https://services.arcgis.com/F7DSX1DSNSiWmOqh/arcgis/rest/services/jldp_boundary/FeatureServer/2")
 dangermond_preserve_wkt <- dangermond_preserve %>% sf::st_as_sfc() %>%  sf::st_as_text()
 dangermond_preserve_bbox <- sf::st_bbox(dangermond_preserve) %>% sf::st_as_sfc() %>%  sf::st_as_text()
 ```
 
-## Get focal county boundaries
+## Get Santa Barbara county boundary
 ```{r, include = FALSE, echo = FALSE}
-focal_counties <- tigris::counties("California", cb = TRUE) %>% 
-  dplyr::filter(NAME %in% c("Santa Barbara", "San Luis Obispo", "Ventura")) %>% 
+sb_county <- tigris::counties("California", cb = TRUE) %>% 
+  dplyr::filter(NAME %in% c("Santa Barbara")) %>% # , "San Luis Obispo", "Ventura")) %>% # In case more counties are needed
   sf::st_union()
-focal_counties_bbox <- sf::st_bbox(focal_counties) %>% sf::st_as_sfc() %>%  sf::st_as_text()
+sb_county_wkt <- sb_county %>%  sf::st_as_text()
+sb_county_bbox <- sf::st_bbox(sb_county) %>% sf::st_as_sfc() %>%  sf::st_as_text()
 ```
 
-# Get species distribution data
+
+# Get species occurrence data
 ## GBIF
 ```{r, include = FALSE, echo = FALSE}
 ## Extract GBIF occurrences for the Dangermond Preserve
-gbif_occurrence_count_dangermond <- spocc::occ(from = "gbif", limit = 10, geometry = dangermond_preserve_bbox, has_coords = TRUE)$gbif$meta$found
-gbif_occurrences_dangermond <- spocc::occ(from = "gbif", limit = gbif_occurrence_count_dangermond, geometry = dangermond_preserve_bbox, has_coords = TRUE)$gbif$data[[1]]
+gbif_occurrence_count_dangermond <- spocc::occ(from = "gbif", limit = 1, geometry = dangermond_preserve_bbox, has_coords = TRUE)$gbif$meta$found
+gbif_occurrences_dangermond <- spocc::occ(from = "gbif", limit = gbif_occurrence_count_dangermond, geometry = dangermond_preserve_bbox, date = c("1980-01-01", Sys.Date()), has_coords = TRUE, )$gbif$data[[1]]
 ### Save output as csv
 gbif_occurrences_dangermond %>% readr::write_csv("data/gbif_occurrences_dangermond.csv")
 
-## Extract GBIF occurrences for Santa Barbara County from R package gbifdb
+## Extract GBIF occurrences for Santa Barbara County using R package gbifdb (faster than SPOCC)
 gbif_data <- gbifdb::gbif_remote(backend = "duckdb")
 gbif_occurrences_california <- gbif_data %>% 
     dplyr::filter(stateprovince == "California")
-gbif_occurrences_3counties <- gbif_occurrences_california %>% 
-  dplyr::filter(decimallongitude >= -121.3464 & decimallongitude <= -118.6325 & decimallatitude >= 33.21473 & decimallatitude <= 35.79518)
-gbif_occurrences_3counties <- gbif_occurrences_sb %>% 
+gbif_occurrences_sb <- gbif_occurrences_california %>% 
+  dplyr::filter(decimallongitude >= -120.6723 & decimallongitude <= -119.0274 & decimallatitude >= 33.46569 & decimallatitude <= 35.11459, year >= 1980)
+gbif_occurrences_sb <- gbif_occurrences_sb %>% 
   dplyr::mutate(geometry = st_point(decimallongitude, decimallatitude)) %>%
   duckdbfs::to_sf(crs = 4326)
 ### Save output as csv
-gbif_occurrences_3counties %>% readr::write_csv("data/gbif_occurrences_3counties.csv")
+gbif_occurrences_sb %>% sf::st_set_geometry(NULL) %>% readr::write_csv("data/gbif_occurrences_sb.csv")
 ```
 
 ## iNaturalist
 ```{r, include = FALSE, echo = FALSE}
 ## Extract iNaturalist occurrences for the Dangermond Preserve
-inat_occurrence_count_dangermond <- spocc::occ(from = "inat", limit = 10, geometry = dangermond_preserve_bbox, has_coords = TRUE)$inat$meta$found
+inat_occurrence_count_dangermond <- spocc::occ(from = "inat", limit = 1, geometry = dangermond_preserve_bbox, has_coords = TRUE)$inat$meta$found
 inat_occurrences_dangermond <- spocc::occ(from = "inat", limit = inat_occurrence_count_dangermond, geometry = dangermond_preserve_bbox, has_coords = TRUE)$inat$data[[1]]
+## Remove casual and obscured observations
+
 ### Save output as csv
 inat_occurrences_dangermond %>% readr::write_csv("data/inat_occurrences_dangermond.csv")
 ## Extract data from Dangermond Preserve iNaturalist project
@@ -83,32 +87,85 @@ inat_occurrences_from_dangermond_project <- rinat::get_inat_obs_project(grpid = 
 inat_occurrences_from_dangermond_project %>% readr::write_csv("data/inat_occurrences_from_dangermond_project.csv")
 ```
 
+## CalFlora
+```{r, include = FALSE, echo = FALSE}
+## Increase timeout limit
+options(timeout = 300)
+## Extract CalFlora curated occurrences table for the Dangermond Preserve using RSelenium
+### Start the web driver
+driver <- RSelenium::rsDriver(browser = "firefox", port = 6000L)
+### Say 'I'm a client'
+remote_driver <- driver[["client"]]
+### Send website address to the browser
+calflora_dangermond_url <- "https://www.calflora.org/entry/observ.html#srch=t&cols=0,47,46,3,13,38,1,59,33&lpom=d&chk=t&inbp=t&bgid=psd32678&y=34.5046&x=-120.4524&z=11&cch=t&cnabh=t&inat=r"
+### Navigate to desired URL
+remote_driver$navigate(calflora_dangermond_url)
+### Extract page source
+page_source <- remote_driver$getPageSource()[[1]] 
+### Extract records table
+calflora_occurrences_dangermond <- page_source %>% rvest::read_html() %>% rvest::html_elements(xpath = '//div[@id="resultSlot"]') %>% rvest::html_table(header = TRUE)
+calflora_occurrences_dangermond <- calflora_occurrences_dangermond[[1]][, -1]
+### Save output as csv
+calflora_occurrences_dangermond %>% readr::write_csv("data/calflora_occurrences_dangermond.csv")
+```
+
 ## iDigBio
 ```{r, include = FALSE, echo = FALSE}
 ## Extract iDigBio occurrences for the Dangermond Preserve
-idigbio_occurrence_count_dangermond <- spocc::occ(from = "idigbio", limit = 10, geometry = dangermond_preserve_bbox)$idigbio$meta$found
+idigbio_occurrence_count_dangermond <- spocc::occ(from = "idigbio", limit = 1, geometry = dangermond_preserve_bbox)$idigbio$meta$found
 idigbio_occurrences_dangermond <- spocc::occ(from = "idigbio", limit = idigbio_occurrence_count_dangermond, geometry = dangermond_preserve_bbox)$idigbio$data[[1]]
 ### Save output as csv
 idigbio_occurrences_dangermond %>% readr::write_csv("data/idigbio_occurrences_dangermond.csv")
 ```
 
-## CalFlora
+
+# Process and Integrate species occurrence data
 ```{r, include = FALSE, echo = FALSE}
-## Increase timeout limit
-options(timeout = 300)
-## Extract CalFlora occurrences for the Dangermond Preserve
-download.file("https://www.calflora.org/app/download?order=rslvd_taxon&format=CSV&cols=ID,Taxon,Observer,Source,Date,County,Location+Quality,Latitude,Longitude,Location+Description&natural_status=any&georeferenced=t&georef=a&xun=135283", "data/calflora_occurrences_dangermond.csv")
-```
+# Specify minimum set of common fields for integration
+data_fields <- c("key", "scientificName", "longitude", "latitude", "coordinateUncertaintyInMeters", "eventDate", "year", "source", "dataset", "URL")
+
+# Process datasets to fit common fields
 
 ## CalFlora
-```{r, include = FALSE, echo = FALSE}
-## Increase timeout limit
-options(timeout = 300)
-## Extract CalFlora occurrences for the Dangermond Preserve
-download.file("https://www.calflora.org/app/download?order=rslvd_taxon&format=CSV&cols=ID,Taxon,Observer,Source,Date,County,Location+Quality,Latitude,Longitude,Location+Description&natural_status=any&georeferenced=t&georef=a&xun=135283", "data/calflora_occurrences_dangermond.csv")
+### Rename fields
+calflora_occurrences_dangermond_clean <- calflora_occurrences_dangermond %>% 
+  dplyr::mutate(key = ID, scientificName = Plant, longitude = Longitude, latitude = Latitude, coordinateUncertaintyInMeters = `Error Radius (m)`, eventDate = Date, year = substr(eventDate, 1, 4), source = "CalFlora", dataset = Source, URL = `Detail URL`) %>% 
+  dplyr::select(data_fields) 
+calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(1:nrow(calflora_occurrences_dangermond_clean), function(i) ifelse(grepl("in:", calflora_occurrences_dangermond_clean$key[i]), paste0("https://www.inaturalist.org/observations/", gsub("in:", "", calflora_occurrences_dangermond_clean$key[i])), calflora_occurrences_dangermond_clean$URL[i]))
+calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(calflora_occurrences_dangermond_clean$URL , function(x) ifelse(grepl("entry/occdetail.html", x), paste0("https://www.calflora.org/entry/", x), x))
+
+## GBIF
+gbif_occurrences_dangermond_clean <- gbif_occurrences_dangermond %>% 
+  dplyr::filter(institutionCode != "iNaturalist") %>% # Remove iNaturalist records because those are being extracted directly from iNaturalist
+  dplyr::filter() %>% 
+  dplyr::mutate(source = "GBIF", dataset = institutionCode, URL = paste0("https://www.gbif.org/occurrence/", key)) %>% 
+  dplyr::select(data_fields)
+
+## iNaturalist (General Search)
+inat_occurrences_dangermond_clean <- inat_occurrences_dangermond %>% 
+  dplyr::filter(coordinates_obscured == "false", quality_grade != "casual") %>% 
+  dplyr::mutate(key = id, scientificName = scientific_name, coordinateUncertaintyInMeters = positional_accuracy, eventDate = observed_on, year = substr(eventDate, 1, 4), source = "iNaturalist", dataset = "iNaturalist", URL = url) %>% 
+  dplyr::select(data_fields)
+
+## iNaturalist (Project Search)
+inat_occurrences_from_dangermond_project_cleaned <- inat_occurrences_from_dangermond_project %>% 
+  dplyr::filter(quality_grade != "casual") %>% 
+  dplyr::mutate(key = id, scientificName = taxon.name, coordinateUncertaintyInMeters = positional_accuracy, eventDate = observed_on, year = substr(eventDate, 1, 4), source = "iNaturalist", dataset = "iNaturalist Dangermond Preserve Project", URL = uri) %>% 
+  dplyr::select(data_fields)
+
+## iDigBio
+idigbio_occurrences_dangermond_cleaned <- idigbio_occurrences_dangermond %>% 
+  dplyr::mutate(key = uuid, scientificName = paste0(toupper(substr(name, 1, 1)), substr(name, 2, nchar(name))), coordinateUncertaintyInMeters = coordinateuncertainty, eventDate = datecollected, year = substr(eventDate, 1, 4), source = "iDigBio", dataset = toupper(institutioncode), URL = paste0("https://www.idigbio.org/portal/records/", key)) %>% 
+  dplyr::select(data_fields)
+
+
+
 ```
 
-## DataONE
+
+
+## Other biodiversity data layers
+### DataONE
 ```{r, include = FALSE, echo = FALSE}
 ## Function to extract DataONE data
 extract_dataone_datasets <- function(query_text = "(attribute:\"Dangermond Preserve\" OR \"Point Conception\" OR \"Santa Barbara\" OR \"Central Coast\" OR \"Santa Ynez\") AND (attribute:\"California\") AND (attribute:\"Species\") AND (attribute:\"Occurrences\" OR \"Distributions\" OR \"Observations\")"){
@@ -161,7 +218,7 @@ download_dataone_datasets <- function(datasets = dataone_datasets_dangermond){
 download_dataone_datasets()
 ```
 
-## California Departmnet of Fish and Wildlife
+### California Departmnet of Fish and Wildlife
 ```{r, include = FALSE, echo = FALSE}
 ## Extract list of layers from CDFW ArcGIS REST Service
 ### Get JSON file from REST Service home
@@ -196,7 +253,7 @@ gis_layers <- purrr::map(biosds_urls[500:length(biosds_urls)], purrr::safely(fun
 }))
 ```
 
-## USGS ScienceBase
+### USGS ScienceBase
 ```{r, include = FALSE, echo = FALSE}
 ## Extract datasets from USGS ScienceBase using library(sbtools)
 library(sbtools)
@@ -213,7 +270,7 @@ purrr::map(1:length(sciencebase_datasets_3counties), function(i){
 })
 ```
 
-## Data.gov
+### Data.gov
 ```{r, include = FALSE, echo = FALSE}
 ## Extract datasets from Data.gov
 ### Set up query
