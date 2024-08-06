@@ -125,43 +125,54 @@ idigbio_occurrences_dangermond %>% readr::write_csv("data/idigbio_occurrences_da
 data_fields <- c("key", "scientificName", "longitude", "latitude", "coordinateUncertaintyInMeters", "eventDate", "year", "source", "dataset", "URL")
 
 # Process datasets to fit common fields
-
 ## CalFlora
 ### Rename fields
 calflora_occurrences_dangermond_clean <- calflora_occurrences_dangermond %>% 
   dplyr::mutate(key = ID, scientificName = Plant, longitude = Longitude, latitude = Latitude, coordinateUncertaintyInMeters = `Error Radius (m)`, eventDate = Date, year = substr(eventDate, 1, 4), source = "CalFlora", dataset = Source, URL = `Detail URL`) %>% 
-  dplyr::select(data_fields) 
+  dplyr::select(data_fields) %>% 
+  dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(1:nrow(calflora_occurrences_dangermond_clean), function(i) ifelse(grepl("in:", calflora_occurrences_dangermond_clean$key[i]), paste0("https://www.inaturalist.org/observations/", gsub("in:", "", calflora_occurrences_dangermond_clean$key[i])), calflora_occurrences_dangermond_clean$URL[i]))
 calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(calflora_occurrences_dangermond_clean$URL , function(x) ifelse(grepl("entry/occdetail.html", x), paste0("https://www.calflora.org/entry/", x), x))
 
 ## GBIF
 gbif_occurrences_dangermond_clean <- gbif_occurrences_dangermond %>% 
   dplyr::filter(institutionCode != "iNaturalist") %>% # Remove iNaturalist records because those are being extracted directly from iNaturalist
-  dplyr::filter() %>% 
-  dplyr::mutate(source = "GBIF", dataset = institutionCode, URL = paste0("https://www.gbif.org/occurrence/", key)) %>% 
-  dplyr::select(data_fields)
+  dplyr::mutate(source = "GBIF", dataset = institutionCode, key = key, eventDate = eventDate, URL = paste0("https://www.gbif.org/occurrence/", key), year = year) %>% 
+  dplyr::select(data_fields) %>% 
+  dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 ## iNaturalist (General Search)
 inat_occurrences_dangermond_clean <- inat_occurrences_dangermond %>% 
   dplyr::filter(coordinates_obscured == "false", quality_grade != "casual") %>% 
   dplyr::mutate(key = id, scientificName = scientific_name, coordinateUncertaintyInMeters = positional_accuracy, eventDate = observed_on, year = substr(eventDate, 1, 4), source = "iNaturalist", dataset = "iNaturalist", URL = url) %>% 
-  dplyr::select(data_fields)
+  dplyr::select(data_fields) %>% 
+  dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 ## iNaturalist (Project Search)
 inat_occurrences_from_dangermond_project_cleaned <- inat_occurrences_from_dangermond_project %>% 
   dplyr::filter(quality_grade != "casual") %>% 
   dplyr::mutate(key = id, scientificName = taxon.name, coordinateUncertaintyInMeters = positional_accuracy, eventDate = observed_on, year = substr(eventDate, 1, 4), source = "iNaturalist", dataset = "iNaturalist Dangermond Preserve Project", URL = uri) %>% 
-  dplyr::select(data_fields)
+  dplyr::select(data_fields) %>% 
+  dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 ## iDigBio
 idigbio_occurrences_dangermond_cleaned <- idigbio_occurrences_dangermond %>% 
   dplyr::mutate(key = uuid, scientificName = paste0(toupper(substr(name, 1, 1)), substr(name, 2, nchar(name))), coordinateUncertaintyInMeters = coordinateuncertainty, eventDate = datecollected, year = substr(eventDate, 1, 4), source = "iDigBio", dataset = toupper(institutioncode), URL = paste0("https://www.idigbio.org/portal/records/", key)) %>% 
-  dplyr::select(data_fields)
+  dplyr::select(data_fields) %>% 
+  dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
+# Integrate datasets
+occurrences_dangermond <- list(calflora_occurrences_dangermond_clean,
+                               gbif_occurrences_dangermond_clean,
+                               inat_occurrences_dangermond_clean,
+                               inat_occurrences_from_dangermond_project_cleaned,
+                               idigbio_occurrences_dangermond_cleaned) %>% 
+  bind_rows()
 
+# Save output as CSV
+occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 
 ```
-
 
 
 ## Other biodiversity data layers

@@ -36,7 +36,6 @@ function(input, output, session) {
       leafpm::addPmToolbar(toolbarOptions = leafpm::pmToolbarOptions(drawMarker = FALSE, drawCircle = FALSE, drawPolyline = FALSE, editMode = FALSE, cutPolygon = FALSE, removalMode = FALSE), # Add point/polygon drawing tools
                            drawOptions = leafpm::pmDrawOptions(snappable = FALSE, markerStyle = list(draggable = FALSE))
       )
-    # leaflet::addLegend(colors = c(grey(.2), "#2c7bb6", "#8b0000"), opacity = c(.8), labels = c("Range Extent", "Area of Occupancy", "Occurrences"), position = "bottomright") # Add legend to describe layers to be mapped
   })
   
 }
