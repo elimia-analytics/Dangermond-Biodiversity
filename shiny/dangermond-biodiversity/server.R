@@ -12,6 +12,8 @@ library(shinyjs)
 library(sf)
 library(shinycssloaders)
 
+integrated_dangermond_occurrences <- read_csv("https://raw.githubusercontent.com/elimia-analytics/Dangermond-Biodiversity/main/data/integrated_occurrences_dangermond.csv")
+
 # Define server logic required to draw a histogram
 function(input, output, session) {
 

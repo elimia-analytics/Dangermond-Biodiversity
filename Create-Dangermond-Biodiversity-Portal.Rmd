@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r setup}
 ## Identify required package names
 ### CRAN packages
-cran_packages <- c("tidyverse", "sf", "tmap", "spocc", "rinat", "ebirdst", "dataone", "sbtools", "tigris")
+cran_packages <- c("tidyverse", "sf", "tmap", "spocc", "rinat", "ebirdst", "dataone", "sbtools", "tigris", "natserv")
 ### GitHub packages
 github_packages <- c("gbifdb", "esri2sf")
 ## Install CRAN packages not yet installed
@@ -93,11 +93,11 @@ inat_occurrences_from_dangermond_project %>% readr::write_csv("data/inat_occurre
 options(timeout = 300)
 ## Extract CalFlora curated occurrences table for the Dangermond Preserve using RSelenium
 ### Start the web driver
-driver <- RSelenium::rsDriver(browser = "firefox", port = 6000L)
+driver <- RSelenium::rsDriver(browser = "firefox", port = 6020L)
 ### Say 'I'm a client'
 remote_driver <- driver[["client"]]
 ### Send website address to the browser
-calflora_dangermond_url <- "https://www.calflora.org/entry/observ.html#srch=t&cols=0,47,46,3,13,38,1,59,33&lpom=d&chk=t&inbp=t&bgid=psd32678&y=34.5046&x=-120.4524&z=11&cch=t&cnabh=t&inat=r"
+calflora_dangermond_url <- "https://www.calflora.org/entry/observ.html#srch=t&cols=0,4,5,2,47,46,3,13,38,1,59,33&lpom=d&chk=t&inbp=t&bgid=psd32678&y=34.505&x=-120.4343&z=11&cch=t&cnabh=t&inat=r"
 ### Navigate to desired URL
 remote_driver$navigate(calflora_dangermond_url)
 ### Extract page source
@@ -118,8 +118,7 @@ idigbio_occurrences_dangermond <- spocc::occ(from = "idigbio", limit = idigbio_o
 idigbio_occurrences_dangermond %>% readr::write_csv("data/idigbio_occurrences_dangermond.csv")
 ```
 
-
-# Process and Integrate species occurrence data
+# Process and Integrate Species Occurrence Data
 ```{r, include = FALSE, echo = FALSE}
 # Specify minimum set of common fields for integration
 data_fields <- c("key", "scientificName", "longitude", "latitude", "coordinateUncertaintyInMeters", "eventDate", "year", "source", "dataset", "URL")
@@ -128,7 +127,7 @@ data_fields <- c("key", "scientificName", "longitude", "latitude", "coordinateUn
 ## CalFlora
 ### Rename fields
 calflora_occurrences_dangermond_clean <- calflora_occurrences_dangermond %>% 
-  dplyr::mutate(key = ID, scientificName = Plant, longitude = Longitude, latitude = Latitude, coordinateUncertaintyInMeters = `Error Radius (m)`, eventDate = Date, year = substr(eventDate, 1, 4), source = "CalFlora", dataset = Source, URL = `Detail URL`) %>% 
+  dplyr::mutate(key = ID, scientificName = Taxon, longitude = Longitude, latitude = Latitude, coordinateUncertaintyInMeters = `Error Radius (m)`, eventDate = Date, year = substr(eventDate, 1, 4), source = "CalFlora", dataset = Source, URL = `Detail URL`) %>% 
   dplyr::select(data_fields) %>% 
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(1:nrow(calflora_occurrences_dangermond_clean), function(i) ifelse(grepl("in:", calflora_occurrences_dangermond_clean$key[i]), paste0("https://www.inaturalist.org/observations/", gsub("in:", "", calflora_occurrences_dangermond_clean$key[i])), calflora_occurrences_dangermond_clean$URL[i]))
@@ -162,18 +161,41 @@ idigbio_occurrences_dangermond_cleaned <- idigbio_occurrences_dangermond %>%
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 # Integrate datasets
-occurrences_dangermond <- list(calflora_occurrences_dangermond_clean,
+integrated_dangermond_occurrences <- list(calflora_occurrences_dangermond_clean,
                                gbif_occurrences_dangermond_clean,
                                inat_occurrences_dangermond_clean,
                                inat_occurrences_from_dangermond_project_cleaned,
                                idigbio_occurrences_dangermond_cleaned) %>% 
   bind_rows()
 
-# Save output as CSV
-occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
+```
+
+# Integrate Taxonomic Information
+```{r, include = FALSE, echo = FALSE}
+# Extract list of unique taxonomic concepts for Dangermond Preserve
+dangermond_taxa <- integrated_dangermond_occurrences$scientificName %>% unique()
+dangermond_taxa <- dangermond_taxa[-which(dangermond_taxa %in% c(NA, ""))]
+# Extract taxonomic information using the Global Name Resolver service accessed via R package Taxize
+## Run queries in parallel
+future::plan("multisession", workers = 3)
+dangermond_taxa_info_gnr <- furrr::future_map(dangermond_taxa, purrr::safely(function(x) taxize::gnr_resolve(x, fields = "all")))
+## Check data source returning results for most taxa
+dangermond_taxa_info_gnr_sources <- purrr::map(dangermond_taxa_info_gnr, function(x) x$result$data_source_title %>% unique()) %>% unlist() %>% table() %>% sort(decreasing = TRUE)
+## Extract taxonomic information from GBIF Backbone Taxonomy
+dangermond_taxa_info_gbif <- purrr::map(dangermond_taxa_info_gnr, function(x) (x$result %>% dplyr::filter(data_source_title == "GBIF Backbone Taxonomy"))[1, ]) %>% 
+  bind_rows() %>% 
+  dplyr::filter(complete.cases(.))
+## Write out taxonomic information
+dangermond_taxa_info_gbif %>% write_csv("data/dangermond_taxa_info_gbif.csv")
+
+
 
 ```
 
+
+
+# Save output as CSV
+occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 
 ## Other biodiversity data layers
 ### DataONE
