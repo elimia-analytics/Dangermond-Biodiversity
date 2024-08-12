@@ -11,6 +11,8 @@ library(purrr)
 library(shinyjs)
 library(sf)
 library(shinycssloaders)
+library(dygraphs)
+library(plotly)
 
 scr <- tags$script(HTML(
   "
@@ -56,6 +58,15 @@ navbarPage(title = HTML("<span style='display: inline-block; padding: 13px 5px 1
                                  )
                         )
                  )
+               ),
+               
+               absolutePanel(id = "cond_inputs_panel", 
+                             class = "panel panel-default", 
+                             top = 63, left = 380, right = "auto", bottom = "auto",
+                             width = "10vw",
+                             height = "4vh",
+                             style = "margin-top: 0; padding: 0em 1.8em 1em 3em; border-color: rgba(169, 169, 169, 0); background-color: rgba(169, 169, 169, 0); z-index: 10 !important; overflow-y: hidden !important; overflow-x: hidden;", 
+                             actionButton(inputId = "map_filter", label = "Redo search in this area", icon = icon("close"), block = TRUE, class = "btn-primary btn-sm", width = "100%")
                )
 
            )
