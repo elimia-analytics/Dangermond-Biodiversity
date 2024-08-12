@@ -42,7 +42,21 @@ navbarPage(title = HTML("<span style='display: inline-block; padding: 13px 5px 1
            
            div(class="outer",
                
-               shinycssloaders::withSpinner(leafletOutput("main_map", height="60vh", width = "100vw"), type = 7),
+               fluidRow(
+                 column(width = 9,
+                        fluidRow(
+                          shinycssloaders::withSpinner(leafletOutput("main_map"), type = 7) #, height="60vh", width = "100vw"), type = 7),
+                        ),
+                        fluidRow(
+                          column(width = 8,
+                                 shinycssloaders::withSpinner(dygraphOutput("time_plot"), type = 7),
+                                 ),
+                          column(width = 4,
+                                 shinycssloaders::withSpinner(plotlyOutput("taxa_donut"), type = 7)
+                                 )
+                        )
+                 )
+               )
 
            )
                

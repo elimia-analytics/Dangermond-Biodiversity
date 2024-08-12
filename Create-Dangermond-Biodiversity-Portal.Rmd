@@ -184,7 +184,17 @@ dangermond_taxa_info_gnr_sources <- purrr::map(dangermond_taxa_info_gnr, functio
 ## Extract taxonomic information from GBIF Backbone Taxonomy
 dangermond_taxa_info_gbif <- purrr::map(dangermond_taxa_info_gnr, function(x) (x$result %>% dplyr::filter(data_source_title == "GBIF Backbone Taxonomy"))[1, ]) %>% 
   bind_rows() %>% 
-  dplyr::filter(complete.cases(.))
+  dplyr::filter(complete.cases(matched_name),
+                classification_path != "") 
+dangermond_taxa_info_gbif <- dangermond_taxa_info_gbif %>% 
+      dplyr::mutate(kingdom = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "kingdom")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist(),
+                    phylum = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "phylum")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist(),
+                    class = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "class")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist(),
+                    order = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "order")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist(),
+                    family = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "family")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist(),
+                    genus = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "genus")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist(),
+                    species = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "species")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist()
+                    )
 ## Write out taxonomic information
 dangermond_taxa_info_gbif %>% write_csv("data/dangermond_taxa_info_gbif.csv")
 
