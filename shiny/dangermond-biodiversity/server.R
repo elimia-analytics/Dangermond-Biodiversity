@@ -15,6 +15,7 @@ library(dygraphs)
 library(plotly)
 library(readr)
 library(dplyr)
+library(terra)
 
 # Load data
 ## Load integrated species occurrence data from GitHub repository
@@ -32,12 +33,42 @@ integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>%
 ## Add "Unknown" category for the taxonomy
 # integrated_dangermond_occurrences$kingdom[which(is.na(integrated_dangermond_occurrences$kingdom))] <- "Unknown"
 # integrated_dangermond_occurrences$classification_path[which(is.na(integrated_dangermond_occurrences$classification_path))] <- "Unknown"
-
 integrated_dangermond_occurrences_sample <- integrated_dangermond_occurrences %>% 
   dplyr::sample_n(5000)
 ## Load Dangermond Preserve boundary GIS layer
 dangermond_preserve <- readRDS("data/dangermond_preserve.rds")
+dangermond_preserve_bbox <- st_bbox(dangermond_preserve)
 
+# Create count rasters
+## Create empty raster for the preserve (resolution approximately 4km squared)
+preserve_raster <- terra::rast(xmin = dangermond_preserve_bbox[["xmin"]], 
+                               ymin = dangermond_preserve_bbox[["ymin"]],
+                               xmax = dangermond_preserve_bbox[["xmax"]], 
+                               ymax = dangermond_preserve_bbox[["ymax"]],
+                               resolution = 2/101
+)
+preserve_raster <- terra::extend(preserve_raster, 1)
+values(preserve_raster) <- NA
+# Assign each record its cell ID
+integrated_dangermond_occurrences_sample <- integrated_dangermond_occurrences_sample %>% 
+  dplyr::mutate(cellID = terra::cellFromXY(record_count_raster, 
+                                           xy = integrated_dangermond_occurrences_sample[c("longitude", "latitude")] %>% as.data.frame()
+  )
+  )
+# Generate record count raster
+record_count_raster <- preserve_raster
+cell_record_counts <- integrated_dangermond_occurrences_sample$cellID %>% table() 
+values(record_count_raster)[names(cell_record_counts) %>% as.numeric()] <- cell_record_counts
+record_count_raster_polys <- record_count_raster %>% terra::as.polygons(aggregate = FALSE, na.rm = TRUE) %>% sf::st_as_sf()
+names(record_count_raster_polys)[1] <- "record_count"
+# Generate species count raster
+species_count_raster <- preserve_raster
+cell_species_counts <- integrated_dangermond_occurrences_sample %>% 
+  dplyr::group_by(cellID) %>% 
+  dplyr::summarise(species_count = n_distinct(scientificName))
+values(species_count_raster)[cell_species_counts$cellID] <- cell_species_counts$species_count
+species_count_raster_polys <- species_count_raster %>% terra::as.polygons(aggregate = FALSE, na.rm = TRUE) %>% sf::st_as_sf()
+names(species_count_raster_polys)[1] <- "species_count"
 # Define server logic
 function(input, output, session) {
 
@@ -68,6 +99,7 @@ function(input, output, session) {
   output$main_map <- leaflet::renderLeaflet({
     
     points_bbox <- st_bbox(integrated_dangermond_occurrences_sf)
+    records_pal <- colorNumeric("Reds", record_count_raster_polys$record_count, na.color = grey(.7))
     
     m <- leaflet::leaflet(options = leafletOptions(zoomDelta = 0.5, zoomSnap = 0, attributionControl = FALSE, worldCopyJump = FALSE)) %>% # Open new leaflet web map
       leaflet::fitBounds(points_bbox[[1]], points_bbox[[2]], points_bbox[[3]], points_bbox[[4]]) %>%  # Zoom in on North America
@@ -87,17 +119,28 @@ function(input, output, session) {
       leafpm::addPmToolbar(toolbarOptions = leafpm::pmToolbarOptions(drawMarker = FALSE, drawCircle = FALSE, drawPolyline = FALSE, editMode = FALSE, cutPolygon = FALSE, removalMode = FALSE), # Add point/polygon drawing tools
                            drawOptions = leafpm::pmDrawOptions(snappable = FALSE, markerStyle = list(draggable = FALSE))
       ) %>%
-      leaflet::addMapPane("records", zIndex = 400) %>% 
-      addCircleMarkers( 
-        data = integrated_dangermond_occurrences_sf,
-        lng = ~longitude,
-        lat = ~latitude,
-        layerId = ~key,
-        fillColor = "#4169E1",
-        fillOpacity = 0.75,
-        color = "#4169E1",
-        options = pathOptions(pane = "records"),
-        group = "Records"
+      # leaflet::addMapPane("records", zIndex = 400) %>% 
+      # addCircleMarkers( 
+      #   data = integrated_dangermond_occurrences_sf,
+      #   lng = ~longitude,
+      #   lat = ~latitude,
+      #   layerId = ~key,
+      #   fillColor = "#4169E1",
+      #   fillOpacity = 0.75,
+      #   color = "#4169E1",
+      #   options = pathOptions(pane = "records"),
+      #   group = "Records"
+      # ) %>% 
+      addPolygons(data = record_count_raster_polys,
+                  group = "record_counts",
+                  color = "#444444",
+                  fillColor = ~records_pal(record_count_raster_polys$record_count),
+                  smoothFactor = 0.5,
+                  opacity = 1.0,
+                  fillOpacity = 0.75,
+                  weight = 1,
+                  highlightOptions = highlightOptions(color = "#222222", weight = 2, bringToFront = TRUE, fillOpacity = 0.25),
+                  label = paste0(record_count_raster_polys$record_count, " records"), labelOptions = labelOptions(textOnly = FALSE, direction = "right", textsize = "12px", sticky = TRUE, style = list("color" = "black"), offset = c(-5, 0)),
       )
     
     m
