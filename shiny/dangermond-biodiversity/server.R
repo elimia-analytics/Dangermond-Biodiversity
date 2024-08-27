@@ -35,50 +35,49 @@ integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>%
 ## Add a row ID to identify rows
 integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>% 
   dplyr::mutate(rowID = 1:nrow(integrated_dangermond_occurrences))
+## Process and create necessary objects
+### Transform species occurrence data to sf object
+integrated_dangermond_occurrences_sf <- integrated_dangermond_occurrences %>% 
+  dplyr::filter(complete.cases(longitude, latitude)) %>% 
+  dplyr::mutate(lon = longitude,
+                lat = latitude) %>% 
+  sf::st_as_sf(
+    coords = c("lon", "lat"),
+    crs = 4326
+  )
 ## Add "Unknown" category for the taxonomy
 # integrated_dangermond_occurrences$kingdom[which(is.na(integrated_dangermond_occurrences$kingdom))] <- "Unknown"
 # integrated_dangermond_occurrences$classification_path[which(is.na(integrated_dangermond_occurrences$classification_path))] <- "Unknown"
-integrated_dangermond_occurrences_sample <- integrated_dangermond_occurrences %>% 
-  dplyr::sample_n(5000)
+
 ## Load Dangermond Preserve boundary GIS layer
 dangermond_preserve <- readRDS("data/dangermond_preserve.rds")
 dangermond_preserve_bbox <- st_bbox(dangermond_preserve)
 
-# Create count rasters
+# Create count rasters across area including all observations
+occurrences_bbox <- st_bbox(integrated_dangermond_occurrences_sf)
 ## Create empty raster for the preserve (resolution approximately 4km squared)
-preserve_raster <- terra::rast(xmin = dangermond_preserve_bbox[["xmin"]], 
-                               ymin = dangermond_preserve_bbox[["ymin"]],
-                               xmax = dangermond_preserve_bbox[["xmax"]], 
-                               ymax = dangermond_preserve_bbox[["ymax"]],
+occurrences_raster <- terra::rast(xmin = occurrences_bbox[["xmin"]], 
+                               ymin = occurrences_bbox[["ymin"]],
+                               xmax = occurrences_bbox[["xmax"]], 
+                               ymax = occurrences_bbox[["ymax"]],
                                resolution = 2/101
 )
-preserve_raster <- terra::extend(preserve_raster, 1)
-values(preserve_raster) <- NA
-preserve_raster_polys <- preserve_raster %>% terra::as.polygons(aggregate = FALSE, na.rm = TRUE) %>% sf::st_as_sf()
+occurrences_raster <- terra::extend(occurrences_raster, 1)
+values(occurrences_raster) <- NA
+occurrences_raster_polys <- occurrences_raster %>% terra::as.polygons(aggregate = FALSE, na.rm = TRUE) %>% sf::st_as_sf()
 # Assign each record its cell ID
-integrated_dangermond_occurrences_sample <- integrated_dangermond_occurrences_sample %>% 
-  dplyr::mutate(cellID = terra::cellFromXY(preserve_raster, 
-                                           xy = integrated_dangermond_occurrences_sample[c("longitude", "latitude")] %>% as.data.frame()
+integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>% 
+  dplyr::mutate(cellID = terra::cellFromXY(occurrences_raster, 
+                                           xy = integrated_dangermond_occurrences[c("longitude", "latitude")] %>% as.data.frame()
   )
   )
 # Generate record count raster
-record_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences_sample, base_raster = preserve_raster, metric = "records")
+record_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences, base_raster = occurrences_raster, metric = "records")
 # Generate species count raster
-species_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences_sample, base_raster = preserve_raster, metric = "species")
+species_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences, base_raster = occurrences_raster, metric = "species")
 
 # Define server logic
 function(input, output, session) {
-
-  ## Process and create necessary objects
-  ### Transform species occurrence data to sf object
-  integrated_dangermond_occurrences_sf <- integrated_dangermond_occurrences_sample %>% 
-    dplyr::filter(complete.cases(longitude, latitude)) %>% 
-    dplyr::mutate(lon = longitude,
-                  lat = latitude) %>% 
-    sf::st_as_sf(
-      coords = c("lon", "lat"),
-      crs = 4326
-    )
   
   ### Create reactive objects and functions
   #### Species occurrences object reacting to spatial, temporal, and taxonomic filters
@@ -425,9 +424,9 @@ function(input, output, session) {
                             }
 
                             # Generate record count raster
-                            record_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences_filtered$occurrences, base_raster = preserve_raster, metric = "records")
+                            record_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences_filtered$occurrences, base_raster = occurrences_raster, metric = "records")
                             # Generate species count raster
-                            species_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences_filtered$occurrences, base_raster = preserve_raster, metric = "species")
+                            species_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences_filtered$occurrences, base_raster = occurrences_raster, metric = "species")
 
                             dangermond_raster_polys <- reactiveValues(records_count = record_count_raster_output$metric_raster_polys,
                                                                       species_count = species_count_raster_output$metric_raster_polys,

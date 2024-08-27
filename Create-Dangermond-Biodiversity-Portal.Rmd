@@ -53,23 +53,33 @@ sb_county_bbox <- sf::st_bbox(sb_county) %>% sf::st_as_sfc() %>%  sf::st_as_text
 # Get species occurrence data
 ## GBIF
 ```{r, include = FALSE, echo = FALSE}
-## Extract GBIF occurrences for the Dangermond Preserve
+## Extract GBIF occurrences for the Dangermond Preserve only
 gbif_occurrence_count_dangermond <- spocc::occ(from = "gbif", limit = 1, geometry = dangermond_preserve_bbox, has_coords = TRUE)$gbif$meta$found
-gbif_occurrences_dangermond <- spocc::occ(from = "gbif", limit = gbif_occurrence_count_dangermond, geometry = dangermond_preserve_bbox, date = c("1980-01-01", Sys.Date()), has_coords = TRUE, )$gbif$data[[1]]
+gbif_occurrences_dangermond <- spocc::occ(from = "gbif", limit = gbif_occurrence_count_dangermond, geometry = dangermond_preserve_bbox, date = c("1980-01-01", Sys.Date() %>% as.character()), has_coords = TRUE, )$gbif$data[[1]]
 ### Save output as csv
 gbif_occurrences_dangermond %>% readr::write_csv("data/gbif_occurrences_dangermond.csv")
 
 ## Extract GBIF occurrences for Santa Barbara County using R package gbifdb (faster than SPOCC)
 gbif_data <- gbifdb::gbif_remote(backend = "duckdb")
+### Filter and download data
 gbif_occurrences_california <- gbif_data %>% 
-    dplyr::filter(stateprovince == "California")
+  dplyr::filter(stateprovince == "California")
 gbif_occurrences_sb <- gbif_occurrences_california %>% 
-  dplyr::filter(decimallongitude >= -120.6723 & decimallongitude <= -119.0274 & decimallatitude >= 33.46569 & decimallatitude <= 35.11459, year >= 1980)
+  dplyr::filter(decimallongitude >= -120.6723 & decimallongitude <= -119.0274 & decimallatitude >= 33.46569 & decimallatitude <= 35.11459, year >= 1980) %>% # Limit to Santa Barbara County bounding box 
+  dplyr::filter(!(basisofrecord %in% c("FOSSIL_SPECIMEN", "LIVING_SPECIMEN", "MATERIAL_SAMPLE"))) # Exclude
+      if ("occurrencestatus" %in% colnames(gbif_occurrences_sb)) gbif_occurrences_sb <- gbif_occurrences_sb %>% dplyr::filter(occurrencestatus == "PRESENT")
+      if ("coordinateuncertaintyinmeters" %in% colnames(gbif_occurrences_sb)) gbif_occurrences_sb <- gbif_occurrences_sb %>% dplyr::filter(!coordinateuncertaintyinmeters %in% c(999, 9999))
+      if ("samplingprotocol" %in% colnames(gbif_occurrences_sb)) gbif_occurrences_sb <- gbif_occurrences_sb %>% dplyr::filter(!samplingprotocol %in% c("from a cultivated plant of known (indirect) wild origin", "grown"))
+      if ("georeferenceremarks" %in% colnames(gbif_occurrences_sb)) gbif_occurrences_sb <- gbif_occurrences_sb %>% dplyr::filter(!grepl("centroid|Centroid|CENTROID", georeferenceremarks))
+
+### Write out dataset based on filters
 gbif_occurrences_sb <- gbif_occurrences_sb %>% 
   dplyr::mutate(geometry = st_point(decimallongitude, decimallatitude)) %>%
   duckdbfs::to_sf(crs = 4326)
 ### Save output as csv
-gbif_occurrences_sb %>% sf::st_set_geometry(NULL) %>% readr::write_csv("data/gbif_occurrences_sb.csv")
+gbif_occurrences_sb %>% 
+  sf::st_set_geometry(NULL) %>% 
+  readr::write_csv("data/gbif_occurrences_sb.csv")
 ```
 
 ## iNaturalist
@@ -78,13 +88,18 @@ gbif_occurrences_sb %>% sf::st_set_geometry(NULL) %>% readr::write_csv("data/gbi
 inat_occurrence_count_dangermond <- spocc::occ(from = "inat", limit = 1, geometry = dangermond_preserve_bbox, has_coords = TRUE)$inat$meta$found
 inat_occurrences_dangermond <- spocc::occ(from = "inat", limit = inat_occurrence_count_dangermond, geometry = dangermond_preserve_bbox, has_coords = TRUE)$inat$data[[1]]
 ## Remove casual and obscured observations
-
+inat_occurrences_dangermond <- inat_occurrences_dangermond %>%
+  dplyr::filter(quality_grade != "casual") %>% 
+  dplyr::filter(!(obscured == TRUE & public_positional_accuracy >= 10000))
 ### Save output as csv
 inat_occurrences_dangermond %>% readr::write_csv("data/inat_occurrences_dangermond.csv")
+
 ## Extract data from Dangermond Preserve iNaturalist project
 inat_occurrences_from_dangermond_project <- rinat::get_inat_obs_project(grpid = "dangermond-preserve-tnc")
 ### Save output as csv
 inat_occurrences_from_dangermond_project %>% readr::write_csv("data/inat_occurrences_from_dangermond_project.csv")
+
+
 ```
 
 ## CalFlora
@@ -120,6 +135,13 @@ idigbio_occurrences_dangermond %>% readr::write_csv("data/idigbio_occurrences_da
 
 # Process and Integrate Species Occurrence Data
 ```{r, include = FALSE, echo = FALSE}
+# Reload data if not already loaded
+if (!("calflora_occurrences_dangermond" %in% ls())) calflora_occurrences_dangermond <- read_csv("data/calflora_occurrences_dangermond.csv")
+if (!("gbif_occurrences_sb" %in% ls())) gbif_occurrences_sb <- read_csv("data/gbif_occurrences_sb.csv")
+if (!("inat_occurrences_dangermond" %in% ls())) inat_occurrences_dangermond <- read_csv("data/inat_occurrences_dangermond.csv")
+if (!("inat_occurrences_from_dangermond_project" %in% ls())) inat_occurrences_from_dangermond_project <- read_csv("data/inat_occurrences_from_dangermond_project.csv")
+if (!("idigbio_occurrences_dangermond" %in% ls())) idigbio_occurrences_dangermond <- read_csv("data/idigbio_occurrences_dangermond.csv")
+
 # Specify minimum set of common fields for integration
 data_fields <- c("key", "scientificName", "longitude", "latitude", "coordinateUncertaintyInMeters", "eventDate", "year", "source", "dataset", "URL")
 
@@ -134,21 +156,21 @@ calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(1:nrow(calflora_occu
 calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(calflora_occurrences_dangermond_clean$URL , function(x) ifelse(grepl("entry/occdetail.html", x), paste0("https://www.calflora.org/entry/", x), x))
 
 ## GBIF
-gbif_occurrences_dangermond_clean <- gbif_occurrences_dangermond %>% 
-  dplyr::filter(institutionCode != "iNaturalist") %>% # Remove iNaturalist records because those are being extracted directly from iNaturalist
-  dplyr::mutate(source = "GBIF", dataset = institutionCode, key = key, eventDate = eventDate, URL = paste0("https://www.gbif.org/occurrence/", key), year = year) %>% 
+gbif_occurrences_sb_clean <- gbif_occurrences_sb %>% 
+  dplyr::filter(institutioncode != "iNaturalist" & decimallongitude >= -120.4993 & decimallongitude <= -120.3577 & decimallatitude >= 34.4423 & decimallatitude <= 34.57419) %>% # Remove iNaturalist records that overlap the Dangermond bounding box because those are being extracted directly from iNaturalist
+  dplyr::mutate(scientificName = scientificname, longitude = decimallongitude, latitude = decimallatitude, source = "GBIF", dataset = institutioncode, key = gbifid, coordinateUncertaintyInMeters = coordinateuncertaintyinmeters, eventDate = eventdate, URL = paste0("https://www.gbif.org/occurrence/", gbifid), year = year) %>% 
   dplyr::select(data_fields) %>% 
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 ## iNaturalist (General Search)
 inat_occurrences_dangermond_clean <- inat_occurrences_dangermond %>% 
-  dplyr::filter(coordinates_obscured == "false", quality_grade != "casual") %>% 
-  dplyr::mutate(key = id, scientificName = scientific_name, coordinateUncertaintyInMeters = positional_accuracy, eventDate = observed_on, year = substr(eventDate, 1, 4), source = "iNaturalist", dataset = "iNaturalist", URL = url) %>% 
+  dplyr::filter(obscured == FALSE, quality_grade != "casual") %>% 
+  dplyr::mutate(key = id, scientificName = name, coordinateUncertaintyInMeters = positional_accuracy, eventDate = observed_on, year = substr(eventDate, 1, 4), source = "iNaturalist", dataset = "iNaturalist", URL = uri) %>% 
   dplyr::select(data_fields) %>% 
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 ## iNaturalist (Project Search)
-inat_occurrences_from_dangermond_project_cleaned <- inat_occurrences_from_dangermond_project %>% 
+inat_occurrences_from_dangermond_project_cleaned <- inat_occurrences_from_dangermond_project %>%
   dplyr::filter(quality_grade != "casual") %>% 
   dplyr::mutate(key = id, scientificName = taxon.name, coordinateUncertaintyInMeters = positional_accuracy, eventDate = observed_on, year = substr(eventDate, 1, 4), source = "iNaturalist", dataset = "iNaturalist Dangermond Preserve Project", URL = uri) %>% 
   dplyr::select(data_fields) %>% 
@@ -156,18 +178,20 @@ inat_occurrences_from_dangermond_project_cleaned <- inat_occurrences_from_danger
 
 ## iDigBio
 idigbio_occurrences_dangermond_cleaned <- idigbio_occurrences_dangermond %>% 
-  dplyr::mutate(key = uuid, scientificName = paste0(toupper(substr(name, 1, 1)), substr(name, 2, nchar(name))), coordinateUncertaintyInMeters = coordinateuncertainty, eventDate = datecollected, year = substr(eventDate, 1, 4), source = "iDigBio", dataset = toupper(institutioncode), URL = paste0("https://www.idigbio.org/portal/records/", key)) %>% 
-  dplyr::select(data_fields) %>% 
+  dplyr::mutate(key = uuid, scientificName = paste0(toupper(substr(canonicalname, 1, 1)), substr(name, 2, nchar(name))), coordinateUncertaintyInMeters = coordinateuncertainty, eventDate = datecollected, year = substr(eventDate, 1, 4), source = "iDigBio", dataset = toupper(institutioncode), URL = paste0("https://www.idigbio.org/portal/records/", key)) %>% 
+  dplyr::select(data_fields) %>%
+  dplyr::filter(year >= 1980) %>% 
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 # Integrate datasets
 integrated_dangermond_occurrences <- list(calflora_occurrences_dangermond_clean,
-                               gbif_occurrences_dangermond_clean,
+                               gbif_occurrences_sb_clean,
                                inat_occurrences_dangermond_clean,
                                inat_occurrences_from_dangermond_project_cleaned,
                                idigbio_occurrences_dangermond_cleaned) %>% 
   bind_rows()
-
+# Save output as CSV
+occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 ```
 
 # Integrate Taxonomic Information
@@ -178,13 +202,11 @@ dangermond_taxa <- dangermond_taxa[-which(dangermond_taxa %in% c(NA, ""))]
 # Extract taxonomic information using the Global Name Resolver service accessed via R package Taxize
 ## Run queries in parallel
 future::plan("multisession", workers = 3)
-dangermond_taxa_info_gnr <- furrr::future_map(dangermond_taxa, purrr::safely(function(x) taxize::gnr_resolve(x, fields = "all")))
-## Check data source returning results for most taxa
-dangermond_taxa_info_gnr_sources <- purrr::map(dangermond_taxa_info_gnr, function(x) x$result$data_source_title %>% unique()) %>% unlist() %>% table() %>% sort(decreasing = TRUE)
+dangermond_taxa_info_gnr <- furrr::future_map(dangermond_taxa, purrr::safely(function(x) taxize::gnr_resolve(x, fields = "all", best_match_only = TRUE, canonical = TRUE, preferred_data_sources = c(11))))
 ## Extract taxonomic information from GBIF Backbone Taxonomy
-dangermond_taxa_info_gbif <- purrr::map(dangermond_taxa_info_gnr, function(x) (x$result %>% dplyr::filter(data_source_title == "GBIF Backbone Taxonomy"))[1, ]) %>% 
+dangermond_taxa_info_gbif <- purrr::map(dangermond_taxa_info_gnr, "result") %>% 
   bind_rows() %>% 
-  dplyr::filter(complete.cases(matched_name),
+  dplyr::filter(complete.cases(matched_name2),
                 classification_path != "") 
 dangermond_taxa_info_gbif <- dangermond_taxa_info_gbif %>% 
       dplyr::mutate(kingdom = purrr::map(strsplit(classification_path, "\\|"), which(strsplit(classification_path_ranks[1], "\\|")[[1]] == "kingdom")) %>% purrr::map(function(x) ifelse(!is.null(x), x, NA)) %>% unlist(),
@@ -197,15 +219,7 @@ dangermond_taxa_info_gbif <- dangermond_taxa_info_gbif %>%
                     )
 ## Write out taxonomic information
 dangermond_taxa_info_gbif %>% write_csv("data/dangermond_taxa_info_gbif.csv")
-
-
-
 ```
-
-
-
-# Save output as CSV
-occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 
 ## Other biodiversity data layers
 ### DataONE
