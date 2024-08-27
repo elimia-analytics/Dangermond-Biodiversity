@@ -5,6 +5,8 @@
 #' # Server setup
 #' ## Load libraries
 library(shiny)
+library(shinydashboard)
+library(shinyBS)
 library(leaflet)
 library(leaflet.extras)
 library(purrr)
@@ -13,6 +15,7 @@ library(sf)
 library(shinycssloaders)
 library(dygraphs)
 library(plotly)
+library(DT)
 
 scr <- tags$script(HTML(
   "
@@ -29,7 +32,7 @@ Shiny.addCustomMessageHandler(
 ))
 
 #' # User Interface
-navbarPage(title = HTML("<span style='display: inline-block; padding: 13px 5px 15px 15px;'><p style = 'font-size: 28px'><strong>Dangermond Preserve Biodiversity Portal</strong></p></span>"), 
+navbarPage(title = HTML("<span style='float: left; display: inline-block; padding-left: 20px;'><img src = 'tnc_logo.svg', height = '45'></span><span style='display: inline-block; padding: 5px 5px 35px 15px;'><h1 style = 'font-size: 28px'><strong>Dangermond Preserve Biodiversity Portal</strong></p></span>"), 
            windowTitle = "Dangermond Preserve Biodiversity Portal", 
            id="nav", theme = "style.css",
            
@@ -39,36 +42,52 @@ navbarPage(title = HTML("<span style='display: inline-block; padding: 13px 5px 1
            
            tags$head(
              HTML("<link href='https://fonts.googleapis.com/css2?family=Roboto&display=swap' rel='stylesheet'>"),
-             HTML("<meta name='viewport' content='width=device-width, initial-scale=1'>"),
+             HTML("<link href='https://fonts.googleapis.com/css2?family=Cabin&display=swap' rel='stylesheet'>"),
+             HTML("<meta name='viewport' content='width=device-width, initial-scale=1'>")
            ),
            
            div(class="outer",
                
-               fluidRow(
-                 column(width = 9,
-                        fluidRow(
-                          shinycssloaders::withSpinner(leafletOutput("main_map"), type = 7) #, height="60vh", width = "100vw"), type = 7),
+               fluidRow(style = "padding-left: 20px;",
+                        column(width = 8, 
+                               fluidRow(
+                                 leafletOutput("main_map"),
+                               ),
+                               fluidRow(style = "padding-top: 20px;",
+                                        tabsetPanel(id = "metric_switch", type = "pills",
+                                                    tabPanel("Records", height = "100%",
+                                                             div(style = "overflow-x: scroll;",
+                                                                 DT::dataTableOutput("records_table")
+                                                             )
+                                                    ),
+                                                    tabPanel("Species", height = "100%",
+                                                             div(style = "overflow-x: scroll;",
+                                                                 DT::dataTableOutput("species_table")
+                                                             )
+                                                    )
+                                        )
+                               )
+                               
                         ),
-                        fluidRow(
-                          column(width = 8,
-                                 shinycssloaders::withSpinner(dygraphOutput("time_plot"), type = 7),
-                                 ),
-                          column(width = 4,
-                                 shinycssloaders::withSpinner(plotlyOutput("taxa_donut"), type = 7)
-                                 )
+                        column(width = 4,
+                               fluidRow(style = "padding-bottom: 0;", plotlyOutput("taxa_donut", width = "100%", height = "100%")),
+                               fluidRow(style = "padding-top: 0px; padding-left: 20px; padding-right: 20px;", dygraphOutput("time_plot", height = "25vh"), type = 7)
                         )
-                 )
-               ),
-               
-               # absolutePanel(id = "cond_inputs_panel", 
-               #               class = "panel panel-default", 
-               #               top = 63, left = 380, right = "auto", bottom = "auto",
-               #               width = "10vw",
-               #               height = "4vh",
-               #               style = "margin-top: 0; padding: 0em 1.8em 1em 3em; border-color: rgba(169, 169, 169, 0); background-color: rgba(169, 169, 169, 0); z-index: 10 !important; overflow-y: hidden !important; overflow-x: hidden;", 
-               #               actionButton(inputId = "map_filter", label = "Redo search in this area", icon = icon("close"), block = TRUE, class = "btn-primary btn-sm", width = "100%")
-               # )
-
+               )
+           ),
+           
+           absolutePanel(id = "cond_inputs_panel", 
+                         class = "panel panel-default", 
+                         top = 65, left = "auto", right = "35vw", bottom = "auto",
+                         width = "17em",
+                         height = "2.5em",
+                         style = "margin: 0; padding: 0; border-bottom: none; border-color: transparent; background-color: rgba(169, 169, 169, 0); z-index: 1000 !important;", 
+                         span(style = "float: left; padding-right: 5px;",
+                              actionButton(inputId = "redo_search", label = "Redo search in this area", block = TRUE, class = "btn-primary btn-sm", width = "100%"),
+                         ),
+                         span(style = "float: left;",
+                              actionButton(inputId = "start_over", label = "Start over", block = TRUE, class = "btn-primary btn-sm", width = "100%")
+                         )
            )
-               
+           
 )
