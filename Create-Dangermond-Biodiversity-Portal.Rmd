@@ -157,7 +157,7 @@ calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(calflora_occurrences
 
 ## GBIF
 gbif_occurrences_sb_clean <- gbif_occurrences_sb %>% 
-  dplyr::filter(institutioncode != "iNaturalist" & decimallongitude >= -120.4993 & decimallongitude <= -120.3577 & decimallatitude >= 34.4423 & decimallatitude <= 34.57419) %>% # Remove iNaturalist records that overlap the Dangermond bounding box because those are being extracted directly from iNaturalist
+  dplyr::filter(!(institutioncode == "iNaturalist" & decimallongitude >= -120.4993 & decimallongitude <= -120.3577 & decimallatitude >= 34.4423 & decimallatitude <= 34.57419)) %>% # Remove iNaturalist records that overlap the Dangermond bounding box because those are being extracted directly from iNaturalist
   dplyr::mutate(scientificName = scientificname, longitude = decimallongitude, latitude = decimallatitude, source = "GBIF", dataset = institutioncode, key = gbifid, coordinateUncertaintyInMeters = coordinateuncertaintyinmeters, eventDate = eventdate, URL = paste0("https://www.gbif.org/occurrence/", gbifid), year = year) %>% 
   dplyr::select(data_fields) %>% 
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
@@ -191,7 +191,7 @@ integrated_dangermond_occurrences <- list(calflora_occurrences_dangermond_clean,
                                idigbio_occurrences_dangermond_cleaned) %>% 
   bind_rows()
 # Save output as CSV
-occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
+integrated_dangermond_occurrences %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 ```
 
 # Integrate Taxonomic Information
@@ -202,7 +202,7 @@ dangermond_taxa <- dangermond_taxa[-which(dangermond_taxa %in% c(NA, ""))]
 # Extract taxonomic information using the Global Name Resolver service accessed via R package Taxize
 ## Run queries in parallel
 future::plan("multisession", workers = 3)
-dangermond_taxa_info_gnr <- furrr::future_map(dangermond_taxa, purrr::safely(function(x) taxize::gnr_resolve(x, fields = "all", best_match_only = TRUE, canonical = TRUE, preferred_data_sources = c(11))))
+dangermond_taxa_info_gnr <- furrr::future_map(dangermond_taxa, purrr::safely(function(x) taxize::gnr_resolve(x, fields = "all", best_match_only = TRUE, canonical = TRUE, preferred_data_sources = c(11))), seed = TRUE)
 ## Extract taxonomic information from GBIF Backbone Taxonomy
 dangermond_taxa_info_gbif <- purrr::map(dangermond_taxa_info_gnr, "result") %>% 
   bind_rows() %>% 
