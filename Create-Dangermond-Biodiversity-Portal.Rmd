@@ -184,14 +184,12 @@ idigbio_occurrences_dangermond_cleaned <- idigbio_occurrences_dangermond %>%
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 # Integrate datasets
-integrated_dangermond_occurrences <- list(calflora_occurrences_dangermond_clean,
+integrated_occurrences_dangermond <- list(calflora_occurrences_dangermond_clean,
                                gbif_occurrences_sb_clean,
                                inat_occurrences_dangermond_clean,
                                inat_occurrences_from_dangermond_project_cleaned,
                                idigbio_occurrences_dangermond_cleaned) %>% 
   bind_rows()
-# Save output as CSV
-integrated_dangermond_occurrences %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 ```
 
 # Integrate Taxonomic Information
@@ -223,7 +221,18 @@ dangermond_taxa_info_gbif <- dangermond_taxa_info_gbif %>%
                     )
 ## Write out taxonomic information
 dangermond_taxa_info_gbif %>% write_csv("data/dangermond_taxa_info_gbif.csv")
+
+## Bind taxonomic information to occurrences data
+integrated_occurrences_dangermond <- integrated_occurrences_dangermond %>% 
+  dplyr::left_join(dangermond_taxa_info_gbif %>% dplyr::select(user_supplied_name, matched_name2, classification_path, kingdom, phylum, class, order, family, genus, species), by = c("scientificName" = "user_supplied_name")) %>% 
+  dplyr::mutate(scientificName = matched_name2, scientificName_source = scientificName) %>% 
+  dplyr::select(-matched_name2)
+
+### Save output as CSV
+integrated_occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 ```
+
+
 
 ## Other biodiversity data layers
 ### DataONE

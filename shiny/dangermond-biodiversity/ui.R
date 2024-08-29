@@ -80,7 +80,8 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                                
                         ),
                         column(width = 4,
-                               fluidRow(style = "padding-top: 0px; padding-left: 20px; padding-right: 20px;", dygraphOutput("time_plot", height = "50vh"), type = 7),
+                               fluidRow(style = "padding: 0px 20px 30px 20px;", dygraphOutput("time_plot", height = "50vh"), type = 7),
+                               # fluidRow(style = "padding-left: 20px;", shiny::selectizeInput(inputId = "select_species", label = "Select species:", choices = NULL)),
                                fluidRow(style = "padding-bottom: 0;", plotlyOutput("taxa_donut", width = "100%", height = "100%"))
                         )
                )
