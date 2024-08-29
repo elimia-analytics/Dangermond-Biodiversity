@@ -64,6 +64,16 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                                                              div(style = "overflow-x: scroll;",
                                                                  DT::dataTableOutput("species_table")
                                                              )
+                                                    ),
+                                                    tabPanel("Range Limits (Northern)", height = "100%",
+                                                             div(style = "overflow-x: scroll;",
+                                                                 DT::dataTableOutput("northern_limits_table")
+                                                             )
+                                                    ),
+                                                    tabPanel("Range Limits (Southern)", height = "100%",
+                                                             div(style = "overflow-x: scroll;",
+                                                                 DT::dataTableOutput("southern_limits_table")
+                                                             )
                                                     )
                                         )
                                )

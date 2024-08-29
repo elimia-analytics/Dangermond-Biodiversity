@@ -25,13 +25,14 @@ library(shinycssloaders)
 source("functions.R")
 ## Load integrated species occurrence data from GitHub repository
 integrated_dangermond_occurrences <- read_csv("https://raw.githubusercontent.com/elimia-analytics/Dangermond-Biodiversity/main/data/integrated_occurrences_dangermond.csv")
-## Load taxonomic information from GitHub repository
+## Load GBIF-based taxonomic information from GitHub repository
 dangermond_taxa_info_gbif <- read_csv("https://raw.githubusercontent.com/elimia-analytics/Dangermond-Biodiversity/main/data/dangermond_taxa_info_gbif.csv")
 ## Bind taxonomic information to species occurrence data
 integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>% 
-  dplyr::left_join(dangermond_taxa_info_gbif %>% dplyr::select(user_supplied_name, classification_path, kingdom, phylum, class, order, family, genus, species), by = c("scientificName" = "user_supplied_name")) 
-# integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>% 
-#   dplyr::mutate(classification_path = paste0("Life|", classification_path)) 
+  dplyr::left_join(dangermond_taxa_info_gbif %>% dplyr::select(user_supplied_name, matched_name2, classification_path, kingdom, phylum, class, order, family, genus, species), by = c("scientificName" = "user_supplied_name")) 
+## Update scientific name to matched GBIF taxonomy name
+integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>% 
+  dplyr::mutate(scientificName = matched_name2) 
 ## Add a row ID to identify rows
 integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>% 
   dplyr::mutate(rowID = 1:nrow(integrated_dangermond_occurrences))
@@ -72,10 +73,44 @@ integrated_dangermond_occurrences <- integrated_dangermond_occurrences %>%
                                            xy = integrated_dangermond_occurrences[c("longitude", "latitude")] %>% as.data.frame()
   )
   )
+# Isolate northern limit records
+dangermond_northern_limit_occurrences <- integrated_dangermond_occurrences %>%
+  dplyr::group_by(scientificName) %>%
+  dplyr::group_split(.keep = TRUE) %>% 
+  purrr::map(function(sp){
+    if (nrow(sp) >= 50){
+      sp <- sp %>% 
+        dplyr::arrange(desc(latitude)) %>% 
+        head(5)
+        sp
+    } else {
+      NULL
+    }
+  }) %>% 
+  bind_rows()
+# Isolate southern limit records
+dangermond_southern_limit_occurrences <- integrated_dangermond_occurrences %>%
+  dplyr::group_by(scientificName) %>%
+  dplyr::group_split(.keep = TRUE) %>% 
+  purrr::map(function(sp){
+    if (nrow(sp) >= 50){
+      sp <- sp %>% 
+        dplyr::arrange(latitude) %>% 
+        head(5)
+      sp
+    } else {
+      NULL
+    }
+  }) %>% 
+  bind_rows()
 # Generate record count raster
 record_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences, base_raster = occurrences_raster, metric = "records")
 # Generate species count raster
 species_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences, base_raster = occurrences_raster, metric = "species")
+# Generate record count raster
+limits_north_count_raster_output <- get_count_raster(records = dangermond_northern_limit_occurrences, base_raster = occurrences_raster, metric = "species")
+# Generate species count raster
+limits_south_count_raster_output <- get_count_raster(records = dangermond_southern_limit_occurrences, base_raster = occurrences_raster, metric = "species")
 
 # Define server logic
 function(input, output, session) {
@@ -83,11 +118,16 @@ function(input, output, session) {
   ### Create reactive objects and functions
   #### Species occurrences object reacting to spatial, temporal, and taxonomic filters
   integrated_dangermond_occurrences_filtered <- reactiveValues(occurrences = integrated_dangermond_occurrences_sf)
-  #### Records count raster
+  #### Metric count raster
   dangermond_rasters <- reactiveValues(records_count = record_count_raster_output$metric_raster,
-                                       species_count = species_count_raster_output$metric_raster)
+                                       species_count = species_count_raster_output$metric_raster,
+                                       limits_north = limits_north_count_raster_output$metric_raster,
+                                       limits_south = limits_south_count_raster_output$metric_raster
+                                       )
   dangermond_raster_polys <- reactiveValues(records_count = record_count_raster_output$metric_raster_polys,
                                             species_count = species_count_raster_output$metric_raster_polys,
+                                            limits_north = limits_north_count_raster_output$metric_raster_polys,
+                                            limits_south = limits_south_count_raster_output$metric_raster_polys,
                                             selected = record_count_raster_output$metric_raster_polys)
   #### Objects to store clicks and center values from the taxon sunburst chart
   clicked_taxa <- reactiveValues(taxon = vector(mode = "character"))
@@ -284,8 +324,6 @@ function(input, output, session) {
 
                             clicked_taxa$taxon <- c(clicked_taxa$taxon, clickData()[["customdata"]])
 
-                            print(clicked_taxa$taxon)
-
                             if (!identical(clicked_taxa$taxon, "Life")){
                               if (length(clicked_taxa$taxon) == 1){
                                 center_taxon$name <- clickData()[["customdata"]]
@@ -332,17 +370,25 @@ function(input, output, session) {
                             print(map_occ)
 
                             # Generate record count raster
-                            record_count_raster_output <- get_count_raster(records = map_occ, base_raster = occurrences_raster, metric = "records")
+                            record_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences, base_raster = occurrences_raster, metric = "records")
                             # Generate species count raster
-                            species_count_raster_output <- get_count_raster(records = map_occ, base_raster = occurrences_raster, metric = "species")
-
+                            species_count_raster_output <- get_count_raster(records = integrated_dangermond_occurrences, base_raster = occurrences_raster, metric = "species")
+                            # Generate record count raster
+                            limits_north_count_raster_output <- get_count_raster(records = dangermond_northern_limit_occurrences, base_raster = occurrences_raster, metric = "species")
+                            # Generate species count raster
+                            limits_south_count_raster_output <- get_count_raster(records = dangermond_southern_limit_occurrences, base_raster = occurrences_raster, metric = "species")
+                            
                             dangermond_raster_polys <- reactiveValues(records_count = record_count_raster_output$metric_raster_polys,
                                                                       species_count = species_count_raster_output$metric_raster_polys,
+                                                                      limits_north = limits_north_count_raster_output$metric_raster_polys,
+                                                                      limits_south = limits_south_count_raster_output$metric_raster_polys,
                                                                       selected = NULL)
 
                             if (input$metric_switch == "Records") dangermond_raster_polys$selected <- dangermond_raster_polys$records_count
                             if (input$metric_switch == "Species") dangermond_raster_polys$selected <- dangermond_raster_polys$species_count
-
+                            if (input$metric_switch == "Range Limits (Northern)") dangermond_raster_polys$selected <- dangermond_raster_polys$limits_north
+                            if (input$metric_switch == "Range Limits (Southern)") dangermond_raster_polys$selected <- dangermond_raster_polys$limits_south
+                            
                             count_pal <- colorNumeric("Reds", dangermond_raster_polys$selected$metric, na.color = grey(.7))
 
                             if (input$main_map_zoom > 14) {
@@ -444,11 +490,16 @@ function(input, output, session) {
 
     #### Species occurrences object reacting to spatial, temporal, and taxonomic filters
     integrated_dangermond_occurrences_filtered <- reactiveValues(occurrences = integrated_dangermond_occurrences_sf)
-    #### Records count raster
+    #### Metric count raster
     dangermond_rasters <- reactiveValues(records_count = record_count_raster_output$metric_raster,
-                                         species_count = species_count_raster_output$metric_raster)
+                                         species_count = species_count_raster_output$metric_raster,
+                                         limits_north = limits_north_count_raster_output$metric_raster,
+                                         limits_south = limits_south_count_raster_output$metric_raster
+    )
     dangermond_raster_polys <- reactiveValues(records_count = record_count_raster_output$metric_raster_polys,
                                               species_count = species_count_raster_output$metric_raster_polys,
+                                              limits_north = limits_north_count_raster_output$metric_raster_polys,
+                                              limits_south = limits_south_count_raster_output$metric_raster_polys,
                                               selected = record_count_raster_output$metric_raster_polys)
 
     center_taxon$name <- "Life"
@@ -540,7 +591,9 @@ function(input, output, session) {
 
     if (input$metric_switch == "Records") dangermond_raster_polys$selected <- dangermond_raster_polys$records_count
     if (input$metric_switch == "Species") dangermond_raster_polys$selected <- dangermond_raster_polys$species_count
-
+    if (input$metric_switch == "Range Limits (Northern)") dangermond_raster_polys$selected <- dangermond_raster_polys$limits_north
+    if (input$metric_switch == "Range Limits (Southern)") dangermond_raster_polys$selected <- dangermond_raster_polys$limits_south
+    
   })
   
   observeEvent({
@@ -768,6 +821,84 @@ function(input, output, session) {
      dplyr::mutate(
        URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
        ) %>% 
+     dplyr::rename("Scientific name" = scientificName,
+                   "Last Observation Date" = eventDate,
+                   "Last Observation URL" = URL,
+                   "Taxonomy" = classification_path
+     ) %>% 
+     datatable(options = list(dom = 'tp', 
+                              pageLength = 8,
+                              columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
+                              language = list(emptyTable = 'You have not selected any occurrences')
+     ), 
+     # filter = list(position = 'top'),
+     selection = list(mode = 'multiple', target = 'row', selected = NULL), 
+     escape = FALSE, 
+     rownames = FALSE
+     )
+   
+ })
+ 
+ output$northern_limits_table <- DT::renderDataTable({
+   
+   dat <- dangermond_northern_limit_occurrences %>%
+     dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+   
+   if (center_taxon$name != "Life"){
+     dat <- dat %>%
+       dplyr::filter(rowID %in% (dat %>%
+                                   dplyr::select(rowID, kingdom, phylum, class, order, family, genus, species) %>%
+                                   dplyr::filter_all(any_vars(. %in% center_taxon$name)) %>%
+                                   dplyr::pull(rowID))
+       )
+   }
+   
+   dat <- dat %>% 
+     dplyr::arrange(desc(eventDate %>% as.Date())) %>% 
+     dplyr::distinct(scientificName, .keep_all = TRUE) %>% 
+     dplyr::select(scientificName, eventDate, URL, classification_path) %>% 
+     dplyr::mutate(
+       URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
+     ) %>% 
+     dplyr::rename("Scientific name" = scientificName,
+                   "Last Observation Date" = eventDate,
+                   "Last Observation URL" = URL,
+                   "Taxonomy" = classification_path
+     ) %>% 
+     datatable(options = list(dom = 'tp', 
+                              pageLength = 8,
+                              columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
+                              language = list(emptyTable = 'You have not selected any occurrences')
+     ), 
+     # filter = list(position = 'top'),
+     selection = list(mode = 'multiple', target = 'row', selected = NULL), 
+     escape = FALSE, 
+     rownames = FALSE
+     )
+   
+ })
+ 
+ output$southern_limits_table <- DT::renderDataTable({
+   
+   dat <- dangermond_southern_limit_occurrences %>%
+     dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+   
+   if (center_taxon$name != "Life"){
+     dat <- dat %>%
+       dplyr::filter(rowID %in% (dat %>%
+                                   dplyr::select(rowID, kingdom, phylum, class, order, family, genus, species) %>%
+                                   dplyr::filter_all(any_vars(. %in% center_taxon$name)) %>%
+                                   dplyr::pull(rowID))
+       )
+   }
+   
+   dat <- dat %>% 
+     dplyr::arrange(desc(eventDate %>% as.Date())) %>% 
+     dplyr::distinct(scientificName, .keep_all = TRUE) %>% 
+     dplyr::select(scientificName, eventDate, URL, classification_path) %>% 
+     dplyr::mutate(
+       URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
+     ) %>% 
      dplyr::rename("Scientific name" = scientificName,
                    "Last Observation Date" = eventDate,
                    "Last Observation URL" = URL,

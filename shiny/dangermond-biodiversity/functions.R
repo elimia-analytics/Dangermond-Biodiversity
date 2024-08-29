@@ -1,5 +1,5 @@
 ### Custom functions for biodiversity portal app
-get_count_raster <- function(records, base_raster, metric = c("records", "species", "limits")){
+get_count_raster <- function(records, base_raster, metric = c("records", "species")){
   
   # Ensure metric is one of the three options
   metric <- match.arg(metric)
