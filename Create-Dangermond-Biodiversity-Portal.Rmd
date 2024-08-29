@@ -201,10 +201,14 @@ dangermond_taxa <- integrated_dangermond_occurrences$scientificName %>% unique()
 dangermond_taxa <- dangermond_taxa[-which(dangermond_taxa %in% c(NA, ""))]
 # Extract taxonomic information using the Global Name Resolver service accessed via R package Taxize
 ## Run queries in parallel
-future::plan("multisession", workers = 3)
-dangermond_taxa_info_gnr <- furrr::future_map(dangermond_taxa, purrr::safely(function(x) taxize::gnr_resolve(x, fields = "all", best_match_only = TRUE, canonical = TRUE, preferred_data_sources = c(11))), seed = TRUE)
+taxa_chunks <- split(1:length(dangermond_taxa), ceiling(seq_along(1:length(dangermond_taxa))/1000))
+dangermond_taxa_info_gnr_list <- vector("list", length(taxa_chunks))
+for (i in 1:length(dangermond_taxa_info_gnr_list)){
+  dangermond_taxa_info_gnr_list[[i]] <- purrr::map(dangermond_taxa[taxa_chunks[[i]]], purrr::safely(function(x) taxize::gnr_resolve(x, fields = "all", best_match_only = TRUE, canonical = TRUE, preferred_data_sources = c(11)))
+  ) 
+}
 ## Extract taxonomic information from GBIF Backbone Taxonomy
-dangermond_taxa_info_gbif <- purrr::map(dangermond_taxa_info_gnr, "result") %>% 
+dangermond_taxa_info_gbif <- purrr::map(dangermond_taxa_info_gnr_list, function(x) purrr::map(x, "result") %>% bind_rows()) %>% 
   bind_rows() %>% 
   dplyr::filter(complete.cases(matched_name2),
                 classification_path != "") 
