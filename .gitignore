@@ -11,6 +11,7 @@
 
 # Example code in package build process
 *-Ex.R
+server.R
 
 # Output files from R CMD build
 /*.tar.gz
@@ -47,3 +48,4 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+.DS_Store
