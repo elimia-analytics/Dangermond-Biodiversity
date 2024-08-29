@@ -158,7 +158,7 @@ calflora_occurrences_dangermond_clean$URL <- purrr::map_chr(calflora_occurrences
 ## GBIF
 gbif_occurrences_sb_clean <- gbif_occurrences_sb %>% 
   dplyr::filter(!(institutioncode == "iNaturalist" & decimallongitude >= -120.4993 & decimallongitude <= -120.3577 & decimallatitude >= 34.4423 & decimallatitude <= 34.57419)) %>% # Remove iNaturalist records that overlap the Dangermond bounding box because those are being extracted directly from iNaturalist
-  dplyr::mutate(scientificName = scientificname, longitude = decimallongitude, latitude = decimallatitude, source = "GBIF", dataset = institutioncode, key = gbifid, coordinateUncertaintyInMeters = coordinateuncertaintyinmeters, eventDate = eventdate, URL = paste0("https://www.gbif.org/occurrence/", gbifid), year = year) %>% 
+  dplyr::mutate(scientificName = verbatimscientificname, longitude = decimallongitude, latitude = decimallatitude, source = "GBIF", dataset = institutioncode, key = gbifid, coordinateUncertaintyInMeters = coordinateuncertaintyinmeters, eventDate = eventdate, URL = paste0("https://www.gbif.org/occurrence/", gbifid), year = year) %>% 
   dplyr::select(data_fields) %>% 
   dplyr::mutate(key = as.character(key), eventDate = as.character(eventDate), year = as.numeric(year), longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
