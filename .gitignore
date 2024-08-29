@@ -11,7 +11,7 @@
 
 # Example code in package build process
 *-Ex.R
-server.R
+*-server.R
 
 # Output files from R CMD build
 /*.tar.gz
