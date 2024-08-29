@@ -51,7 +51,7 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                fluidRow(style = "padding-left: 20px;",
                         column(width = 8, 
                                fluidRow(
-                                 leafletOutput("main_map"),
+                                 leafletOutput("main_map", height = "50vh"),
                                ),
                                fluidRow(style = "padding-top: 20px;",
                                         tabsetPanel(id = "metric_switch", type = "pills",
@@ -70,8 +70,8 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                                
                         ),
                         column(width = 4,
-                               fluidRow(style = "padding-bottom: 0;", plotlyOutput("taxa_donut", width = "100%", height = "100%")),
-                               fluidRow(style = "padding-top: 0px; padding-left: 20px; padding-right: 20px;", dygraphOutput("time_plot", height = "25vh"), type = 7)
+                               fluidRow(style = "padding-top: 0px; padding-left: 20px; padding-right: 20px;", dygraphOutput("time_plot", height = "50vh"), type = 7),
+                               fluidRow(style = "padding-bottom: 0;", plotlyOutput("taxa_donut", width = "100%", height = "100%"))
                         )
                )
            ),
@@ -79,12 +79,12 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
            absolutePanel(id = "cond_inputs_panel", 
                          class = "panel panel-default", 
                          top = 65, left = "auto", right = "35vw", bottom = "auto",
-                         width = "17em",
+                         width = "6em",
                          height = "2.5em",
                          style = "margin: 0; padding: 0; border-bottom: none; border-color: transparent; background-color: rgba(169, 169, 169, 0); z-index: 1000 !important;", 
-                         span(style = "float: left; padding-right: 5px;",
-                              actionButton(inputId = "redo_search", label = "Redo search in this area", block = TRUE, class = "btn-primary btn-sm", width = "100%"),
-                         ),
+                         # span(style = "float: left; padding-right: 5px;",
+                         #      actionButton(inputId = "redo_search", label = "Redo search in this area", block = TRUE, class = "btn-primary btn-sm", width = "100%"),
+                         # ),
                          span(style = "float: left;",
                               actionButton(inputId = "start_over", label = "Start over", block = TRUE, class = "btn-primary btn-sm", width = "100%")
                          )
