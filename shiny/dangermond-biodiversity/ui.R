@@ -15,6 +15,7 @@ library(sf)
 library(shinycssloaders)
 library(dygraphs)
 library(plotly)
+library(readr)
 library(DT)
 
 scr <- tags$script(HTML(
@@ -30,6 +31,11 @@ Shiny.addCustomMessageHandler(
   })
 "
 ))
+
+## Load integrated species occurrence data from GitHub repository
+integrated_dangermond_occurrences <- read_csv("https://raw.githubusercontent.com/elimia-analytics/Dangermond-Biodiversity/main/data/integrated_occurrences_dangermond.csv")
+### Identify dropdown taxon names
+records_species_names <- integrated_dangermond_occurrences$scientificName %>% unique() %>% sort()
 
 #' # User Interface
 navbarPage(title = HTML("<span style='float: left; display: inline-block; padding-left: 20px;'><img src = 'tnc_logo.svg', height = '45'></span><span style='display: inline-block; padding: 5px 5px 35px 15px;'><h1 style = 'font-size: 28px'><strong>Dangermond Preserve Biodiversity Portal</strong></p></span>"), 
@@ -74,14 +80,21 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                                                              div(style = "overflow-x: scroll;",
                                                                  DT::dataTableOutput("southern_limits_table")
                                                              )
+                                                    ),
+                                                    tabPanel("Range Shifts", height = "100%",
+                                                             div(style = "overflow-x: scroll;",
+                                                                 DT::dataTableOutput("range_shifts_table")
+                                                             )
                                                     )
                                         )
                                )
                                
                         ),
                         column(width = 4,
-                               fluidRow(style = "padding: 0px 20px 30px 20px;", dygraphOutput("time_plot", height = "50vh"), type = 7),
-                               # fluidRow(style = "padding-left: 20px;", shiny::selectizeInput(inputId = "select_species", label = "Select species:", choices = NULL)),
+                               fluidRow(style = "padding: 0px 20px 10px 20px;", dygraphOutput("time_plot", height = "50vh"), type = 7),
+                               fluidRow(style = "padding-left: 20px;", h3("Select Species", style = "color: #337AB8 !important; font-size: 15px;")),
+                               fluidRow(style = "padding: 20px 10px 10px 20px;", shiny::selectizeInput(inputId = "select_species", label = "", choices = records_species_names, multiple = TRUE)),
+                               fluidRow(style = "padding-left: 20px;", h3("Or Select Taxon", style = "color: #337AB8 !important; font-size: 15px;")),
                                fluidRow(style = "padding-bottom: 0;", plotlyOutput("taxa_donut", width = "100%", height = "100%"))
                         )
                )
@@ -94,10 +107,10 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                          height = "2.5em",
                          style = "margin: 0; padding: 0; border-bottom: none; border-color: transparent; background-color: rgba(169, 169, 169, 0); z-index: 1000 !important;", 
                          # span(style = "float: left; padding-right: 5px;",
-                         #      actionButton(inputId = "redo_search", label = "Redo search in this area", block = TRUE, class = "btn-primary btn-sm", width = "100%"),
+                         #      actionButton(inputId = "redo_search", label = "Redo search in this area", class = "btn-primary btn-sm", width = "100%"),
                          # ),
                          span(style = "float: left;",
-                              actionButton(inputId = "start_over", label = "Start over", block = TRUE, class = "btn-primary btn-sm", width = "100%")
+                              actionButton(inputId = "start_over", label = "Start over", class = "btn-primary btn-sm", width = "100%")
                          )
            )
            
