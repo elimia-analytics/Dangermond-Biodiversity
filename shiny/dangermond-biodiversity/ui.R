@@ -62,40 +62,22 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                                fluidRow(style = "padding-top: 20px;",
                                         tabsetPanel(id = "metric_switch", type = "pills",
                                                     tabPanel("Records", height = "100%",
-                                                             div(style = "overflow-x: scroll;",
-                                                                 DT::dataTableOutput("records_table")
-                                                             )
                                                     ),
                                                     tabPanel("Species", height = "100%",
-                                                             div(style = "overflow-x: scroll;",
-                                                                 DT::dataTableOutput("species_table")
-                                                             )
-                                                    ),
-                                                    tabPanel("Range Limits (Northern)", height = "100%",
-                                                             div(style = "overflow-x: scroll;",
-                                                                 DT::dataTableOutput("northern_limits_table")
-                                                             )
-                                                    ),
-                                                    tabPanel("Range Limits (Southern)", height = "100%",
-                                                             div(style = "overflow-x: scroll;",
-                                                                 DT::dataTableOutput("southern_limits_table")
-                                                             )
-                                                    ),
-                                                    tabPanel("Range Shifts", height = "100%",
-                                                             div(style = "overflow-x: scroll;",
-                                                                 DT::dataTableOutput("range_shifts_table")
-                                                             )
                                                     )
                                         )
+                               ),
+                               fluidRow(style = "overflow-x: scroll;",
+                                     shinycssloaders::withSpinner(DT::dataTableOutput("records_table"), type = 4)
                                )
                                
                         ),
                         column(width = 4,
-                               fluidRow(style = "padding: 0px 20px 10px 20px;", dygraphOutput("time_plot", height = "50vh"), type = 7),
+                               fluidRow(style = "padding: 0px 20px 10px 20px;", shinycssloaders::withSpinner(dygraphOutput("time_plot", height = "50vh"), type = 4)),
                                fluidRow(style = "padding-left: 20px;", h3("Select Species", style = "color: #337AB8 !important; font-size: 15px;")),
                                fluidRow(style = "padding: 20px 10px 10px 20px;", shiny::selectizeInput(inputId = "select_species", label = "", choices = records_species_names, multiple = TRUE)),
                                fluidRow(style = "padding-left: 20px;", h3("Or Select Taxon", style = "color: #337AB8 !important; font-size: 15px;")),
-                               fluidRow(style = "padding-bottom: 0;", plotlyOutput("taxa_donut", width = "100%", height = "100%"))
+                               fluidRow(style = "padding-bottom: 0;", shinycssloaders::withSpinner(plotlyOutput("taxa_donut", width = "100%", height = "100%"), type = 4))
                         )
                )
            ),

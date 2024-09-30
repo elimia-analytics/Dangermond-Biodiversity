@@ -72,37 +72,9 @@ integrated_dangermond_occurrences_sf <- integrated_dangermond_occurrences %>%
     coords = c("lon", "lat"),
     crs = 4326
   )
-northern_species_names <- integrated_dangermond_occurrences %>% 
-  dplyr::filter(latitude <= (dangermond_preserve_bbox$ymax + 0.1)) %>%
-  dplyr::group_by(scientificName) %>%
-  dplyr::group_split(.keep = TRUE) %>%
-  purrr::map(function(sp){
-    if (nrow(sp) >= 50){
-      sp$scientificName %>% unique()
-    } else {
-      NULL
-    }
-  }) %>% unlist()
-southern_species_names <- integrated_dangermond_occurrences %>%
-  dplyr::filter(latitude >= (dangermond_preserve_bbox$ymin - 0.1)) %>%
-  dplyr::group_by(scientificName) %>%
-  dplyr::group_split(.keep = TRUE) %>%
-  purrr::map(function(sp){
-    if (nrow(sp) >= 50){
-      sp$scientificName %>% unique()
-    } else {
-      NULL
-    }
-  }) %>% unlist()
-directionality_species_names <- intersect(
-  integrated_dangermond_occurrences %>% dplyr::filter(period == 1) %>% count(scientificName) %>% dplyr::filter(n >= 10) %>% dplyr::pull(scientificName),
-  integrated_dangermond_occurrences %>% dplyr::filter(period == 2) %>% count(scientificName) %>% dplyr::filter(n >= 10) %>% dplyr::pull(scientificName)
-) %>% na.omit() %>% as.character()
 
 # Define server logic
 function(input, output, session) {
-  
-  # shinybusy::show_modal_spinner("circle", color = "#024b6c") # show the modal window
   
   # Create reactive objects and functions
   ## Species occurrences object reacting to spatial, temporal, and taxonomic filters
@@ -126,6 +98,10 @@ function(input, output, session) {
   clicked_taxa <- reactiveValues(taxon = vector(mode = "character"))
   center_taxon <- reactiveValues(name = "Life")
   selected_records <- reactiveValues(points = integrated_dangermond_occurrences_sf[1, ][-1, ])
+  map_bounds_change <- reactiveValues(start_bounds = NULL,
+                                      new_bounds = NULL,
+                                      end_bounds = NULL
+                                      )
   ## Function to capture each click from the taxon sunburst chart
   clickData <- reactive({
     currentEventData <- unlist(event_data(event = "plotly_sunburstclick", source = "taxa_plot", priority = "event"))
@@ -162,7 +138,7 @@ function(input, output, session) {
     points_bbox <- st_bbox(dangermond_preserve)
     count_pal <- colorNumeric("Reds", dangermond_raster_polys$selected$metric, na.color = grey(.7))
     
-    m <- leaflet::leaflet(options = leafletOptions(zoomDelta = 0.5, zoomSnap = 0, attributionControl = FALSE, worldCopyJump = FALSE)) %>% # Open new leaflet web map
+    m <- leaflet::leaflet(options = leafletOptions(zoomDelta = 0.5, zoomSnap = 0, attributionControl = FALSE, worldCopyJump = FALSE, scrollWheelZoom = FALSE)) %>% # Open new leaflet web map
       leaflet::fitBounds(points_bbox[[1]], points_bbox[[2]], points_bbox[[3]], points_bbox[[4]]) %>%  # Zoom in on North America
       leaflet::addMapPane("basemap1", zIndex = -100) %>% # Add basemap 1
       leaflet::addProviderTiles(providers$Esri.WorldTerrain, group = "Esri World Terrain", options = list(pathOptions(pane = "basemap1"))) %>%
@@ -180,18 +156,6 @@ function(input, output, session) {
       leafpm::addPmToolbar(toolbarOptions = leafpm::pmToolbarOptions(drawMarker = FALSE, drawCircle = FALSE, drawPolyline = FALSE, editMode = FALSE, cutPolygon = FALSE, removalMode = FALSE), # Add point/polygon drawing tools
                            drawOptions = leafpm::pmDrawOptions(snappable = FALSE, markerStyle = list(draggable = FALSE))
       ) %>%
-      leaflet::addMapPane("metric_raster", zIndex = 500) %>% # Add basemap 3
-      leaflet::addPolygons(data = dangermond_raster_polys$selected,
-                           layerId = ~ID,
-                           color = "black",
-                           fillColor = ~count_pal(dangermond_raster_polys$selected$metric),
-                           opacity = 0.5,
-                           fillOpacity = 0.75,
-                           weight = 1,
-                           options = pathOptions(pane = "metric_raster"),
-                           highlightOptions = highlightOptions(opacity = 0.5, weight = 2, bringToFront = TRUE, fillOpacity = 0.9),
-                           label = dangermond_raster_polys$selected$metric, labelOptions = labelOptions(textOnly = TRUE, direction = "center", textsize = "15px", sticky = FALSE, style = list("color" = "black")) # offset = c(-5, 0)),
-      ) %>%
       leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
       leaflet::addPolygons(data = dangermond_preserve,
                            color = "black",
@@ -200,7 +164,7 @@ function(input, output, session) {
                            fillOpacity = 0,
                            options = pathOptions(pane = "preserve_boundary"),
                            weight = 3
-      )
+      ) 
     
     shinybusy::remove_modal_spinner()
     
@@ -208,290 +172,174 @@ function(input, output, session) {
     
   })
   
-  observe({
-    
-    if (is.null(input$select_species)){
-      
-      integrated_dangermond_occurrences_filtered$occurrences <- integrated_dangermond_occurrences_sf
-      
-    }
-    
-    if (input$metric_switch == "Records"){
+  observeEvent({
+    input$metric_switch
+    input$main_map_zoom
+    input$main_map_bounds
+               }, {
 
-      integrated_dangermond_occurrences_filtered$occurrences <- filtered_data()
-      
-      ## Generate record count raster
-      record_count_raster_output <- get_count_raster(records = filtered_data() %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "records")
-      
-      ## Update reactive objects
-      dangermond_rasters$records_count <- record_count_raster_output$metric_raster
-      dangermond_raster_polys$records_count <- record_count_raster_output$metric_raster_polys
-      dangermond_raster_polys$selected <- record_count_raster_output$metric_raster_polys
-      
-    }
-    
-    if (input$metric_switch == "Species"){
-      
-      ## Generate record count raster
-      species_count_raster_output <- get_count_raster(records = filtered_data() %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "species")
-      
-      ## Update reactive objects
-      dangermond_rasters$species_count <- species_count_raster_output$metric_raster
-      dangermond_raster_polys$species_count <- species_count_raster_output$metric_raster_polys
-      dangermond_raster_polys$selected <- species_count_raster_output$metric_raster_polys
-      
-      shinybusy::remove_modal_spinner()
-      
-    }
-    
-    if (input$metric_switch == "Range Limits (Northern)"){
-      
-      ## Isolate northern limit records
-      dangermond_northern_limit$occurrences <- filtered_data() %>% 
-        dplyr::filter(latitude <= (dangermond_preserve_bbox$ymax + 0.1)) %>%
-        dplyr::group_by(scientificName) %>%
-        dplyr::group_split(.keep = TRUE) %>%
-        purrr::map(function(sp){
-          if (nrow(sp) >= 50){
-            sp <- sp %>%
-              dplyr::arrange(desc(latitude)) %>%
-              head(5)
-            sp
-          } else {
-            NULL
-          }
-        }) %>%
-        bind_rows()
-      
-      if (nrow(dangermond_northern_limit$occurrences) > 0){
-        
-      ## Generate record count raster
-      limits_north_count_raster_output <- get_count_raster(records = dangermond_northern_limit$occurrences %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "records")
-      
-      ## Update reactive objects
-      dangermond_rasters$limits_north <- limits_north_count_raster_output$metric_raster
-      dangermond_raster_polys$limits_north <- limits_north_count_raster_output$metric_raster_polys
-      dangermond_raster_polys$selected <- limits_north_count_raster_output$metric_raster_polys
-      
-      } 
-      
-    }
-    
-    if (input$metric_switch == "Range Limits (Southern)"){
-      
-      ## Isolate southern limit records
-      dangermond_southern_limit$occurrences <- filtered_data() %>%
-        dplyr::filter(latitude >= (dangermond_preserve_bbox$ymin - 0.1)) %>%
-        dplyr::group_by(scientificName) %>%
-        dplyr::group_split(.keep = TRUE) %>%
-        purrr::map(function(sp){
-          if (nrow(sp) >= 50){
-            sp <- sp %>%
-              dplyr::arrange(latitude) %>%
-              head(5)
-            sp
-          } else {
-            NULL
-          }
-        }) %>%
-        bind_rows()
-      
-      if (nrow(dangermond_southern_limit$occurrences) > 0){
-        
-      ## Generate record count raster
-      limits_south_count_raster_output <- get_count_raster(records = dangermond_southern_limit$occurrences %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "records")
-      
-      ## Update reactive objects
-      dangermond_rasters$limits_south <- limits_south_count_raster_output$metric_raster
-      dangermond_raster_polys$limits_south <- limits_south_count_raster_output$metric_raster_polys
-      dangermond_raster_polys$selected <- limits_south_count_raster_output$metric_raster_polys
-      
-      }
-      
-    }
-
-    if (input$metric_switch == "Range Shifts"){
-    
-    ## Calculate center of gravity shifts over time
-    ### Identify subset of species with sufficient temporal coverage
-    directionality_subset <- filtered_data() %>%
-      dplyr::filter(scientificName %in%
-    (intersect(
-      integrated_dangermond_occurrences %>% dplyr::filter(period == 1) %>% count(scientificName) %>% dplyr::filter(n >= 10) %>% dplyr::pull(scientificName),
-      integrated_dangermond_occurrences %>% dplyr::filter(period == 2) %>% count(scientificName) %>% dplyr::filter(n >= 10) %>% dplyr::pull(scientificName)
-    ) %>% na.omit() %>% as.character())
-      )
-    
-    if (nrow(directionality_subset) > 0){
-      
-    ### Calculate species center of gravity changes
-    species_directionality$lines <- purrr::map(unique(directionality_subset$scientificName), function(sp){
-      dat <- directionality_subset %>%
-        dplyr::filter(scientificName %in% sp)
-      out <- rbind(dat %>% dplyr::filter(period == 1) %>% sfcentral::st_central_point(method = "median") %>% sf::st_coordinates(),
-                   dat %>% dplyr::filter(period == 2) %>% sfcentral::st_central_point(method = "median") %>% sf::st_coordinates()
-      ) %>% as.data.frame() %>%
-        dplyr::mutate(taxon = sp, period = 1:2)
-      out <- out %>% left_join(dat %>% dplyr::distinct(classification_path, .keep_all = TRUE) %>% dplyr::select(scientificName, classification_path, rowID, kingdom, phylum, class, order, family, genus, species), by = c("taxon" = "scientificName"))
-      out
-    }) %>% set_names(unique(directionality_subset$scientificName))
-
-        m <- leafletProxy("main_map") %>%
-          clearShapes() %>%
-          clearMarkerClusters() %>%
-          clearMarkers()
-
-        for (i in 1:length(species_directionality$lines)){
-          
-          m <- m %>%
-            leaflet::addMapPane("arrows", zIndex = 400) %>%
-            leaflet.extras2::addArrowhead(
-              lng = species_directionality$lines[[i]]$X,
-              lat = species_directionality$lines[[i]]$Y,
-              label = species_directionality$lines[[i]]$taxon,
-              color = "#ffffbf"
-            ) %>%
-            leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
-            leaflet::addPolygons(data = dangermond_preserve,
-                                 color = "black",
-                                 opacity = 1,
-                                 fillColor = "transparent",
-                                 fillOpacity = 0,
-                                 options = pathOptions(pane = "preserve_boundary"),
-                                 weight = 3
-            )
-          m
-    
-        }
-        
-        if (!is.null(input$select_species)){
-          
-          map_occ1 <- directionality_subset %>% 
-            dplyr::filter(scientificName == input$select_species,
-                          period == 1)
-          
-          m <- m %>%
-            leaflet::addMapPane("records1", zIndex = 350) %>%
-            clearMarkers() %>% 
-            addCircleMarkers(
-              data = map_occ1,
-              lng = ~longitude,
-              lat = ~latitude,
-              layerId = ~key,
-              fillColor = "#4169E1",
-              fillOpacity = 0.90,
-              color = "#4169E1",
-              options = pathOptions(pane = "records1"),
-              group = "Records 1",
-              popup = leafpop::popupTable(map_occ1 %>%
-                                            st_set_geometry(NULL) %>%
-                                            dplyr::mutate(
-                                              URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-                                            ), row.numbers = FALSE, feature.id = FALSE),
-              popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
-            )
-          
-          map_occ2 <- directionality_subset %>% 
-            dplyr::filter(scientificName == input$select_species,
-                          period == 2)
-          
-          m <- m %>%
-            leaflet::addMapPane("records2", zIndex = 350) %>%
-            addCircleMarkers(
-              data = map_occ2,
-              lng = ~longitude,
-              lat = ~latitude,
-              layerId = ~key,
-              fillColor = "#8b0000",
-              fillOpacity = 0.90,
-              color = "#8b0000",
-              options = pathOptions(pane = "records2"),
-              group = "Records 2",
-              popup = leafpop::popupTable(map_occ2 %>%
-                                            st_set_geometry(NULL) %>%
-                                            dplyr::mutate(
-                                              URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-                                            ), row.numbers = FALSE, feature.id = FALSE),
-              popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
-            )
-          
-          m
-          
-        }
-        
-    }
-    
-    }
-    
-    if (!is.null(input$records_table_rows_selected) | !is.null(input$species_table_rows_selected) | !is.null(input$northern_limits_table_rows_selected) | !is.null(input$southern_limits_table_rows_selected)){
-
-      shinybusy::show_modal_spinner("circle", color = "#024b6c") # show the modal window
-      
-      if (!is.null(input$records_table_rows_selected)){
-        dat <- filtered_data() %>%
-          dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-          dplyr::arrange(desc(eventDate))
-        selected_records$points <- dat[input$records_table_rows_selected, ]
-      } 
-      
-      if (!is.null(input$species_table_rows_selected)){
-        dat <- filtered_data() %>%
-          dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-          dplyr::arrange(desc(eventDate %>% as.Date())) %>%
-          dplyr::distinct(scientificName, .keep_all = TRUE) %>%
-          dplyr::arrange(scientificName)
-        selected_records$points <- dat[input$species_table_rows_selected, ]
-      } 
-
-      if (!is.null(input$northern_limits_table_rows_selected)){
-        dat <- dangermond_northern_limit$occurrences %>% 
-          dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-          dplyr::arrange(scientificName, desc(eventDate %>% as.Date())) 
-        selected_records$points <- dat[input$northern_limits_table_rows_selected, ]
-      } 
-      
-      if (!is.null(input$southern_limits_table_rows_selected)){
-        dat <- dangermond_southern_limit$occurrences %>% 
-          dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-          dplyr::arrange(scientificName, desc(eventDate %>% as.Date()))
-        selected_records$points <- dat[input$southern_limits_table_rows_selected, ]
-      } 
-      
-      m <- leafletProxy("main_map") %>%
-        clearGroup("Selected records") %>% 
-        leaflet::addMapPane("records_selected", zIndex = 500) %>%
-        addCircleMarkers(
-          data = selected_records$points,
-          lng = ~longitude,
-          lat = ~latitude,
-          layerId = ~key,
-          fillColor = "#fdae61",
-          fillOpacity = 0.9,
-          color = "#fdae61",
-          options = pathOptions(pane = "records_selected"),
-          group = "Selected records",
-          popup = leafpop::popupTable(selected_records$points %>%
-                                        st_set_geometry(NULL) %>%
-                                        dplyr::mutate(
-                                          URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-                                        ), row.numbers = FALSE, feature.id = FALSE),
-          popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
-        )
-      
-      m
-      
-      shinybusy::remove_modal_spinner()
-      
-    } else {
-      
-      m <- leafletProxy("main_map") %>%
-        clearGroup("Selected records")
-      
-      selected_records$points <- integrated_dangermond_occurrences_sf[1, ][-1, ]
-      
-    }
-    
+                 if (is.null(input$select_species)){
+                   
+                   integrated_dangermond_occurrences_filtered$occurrences <- integrated_dangermond_occurrences_sf
+                   
+                 }
+                 
+                 if (input$main_map_zoom > 14) {
+                   
+                   map_occ <- filtered_data() %>%
+                     dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+                   
+                   if (nrow(map_occ) > 0){
+                     
+                     m <- leafletProxy("main_map") %>%
+                       clearShapes() %>%
+                       clearMarkerClusters() %>%
+                       clearMarkers() %>%
+                       leaflet::addMapPane("records", zIndex = 400) %>%
+                       addCircleMarkers(
+                         data = map_occ,
+                         lng = ~longitude,
+                         lat = ~latitude,
+                         layerId = ~key,
+                         fillColor = "#4169E1",
+                         fillOpacity = 0.75,
+                         color = grey(0.15),
+                         options = pathOptions(pane = "records"),
+                         group = "Records",
+                         popup = leafpop::popupTable(map_occ %>%
+                                                       st_set_geometry(NULL) %>%
+                                                       dplyr::mutate(
+                                                         URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
+                                                       ), row.numbers = FALSE, feature.id = FALSE),
+                         popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
+                       )
+                     
+                   } else {
+                     m <- leafletProxy("main_map") %>%
+                       clearShapes() %>%
+                       clearMarkerClusters() %>%
+                       clearMarkers()
+                   }
+                   
+                 } else {
+                   
+                   if (input$metric_switch == "Records"){
+                     
+                     integrated_dangermond_occurrences_filtered$occurrences <- filtered_data()
+                     
+                     ## Generate record count raster
+                     record_count_raster_output <- get_count_raster(records = filtered_data() %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "records")
+                     
+                     ## Update reactive objects
+                     dangermond_rasters$records_count <- record_count_raster_output$metric_raster
+                     dangermond_raster_polys$records_count <- record_count_raster_output$metric_raster_polys
+                     dangermond_raster_polys$selected <- record_count_raster_output$metric_raster_polys
+                     
+                   }
+                   
+                   if (input$metric_switch == "Species"){
+                     
+                     ## Generate record count raster
+                     species_count_raster_output <- get_count_raster(records = filtered_data() %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "species")
+                     
+                     ## Update reactive objects
+                     dangermond_rasters$species_count <- species_count_raster_output$metric_raster
+                     dangermond_raster_polys$species_count <- species_count_raster_output$metric_raster_polys
+                     dangermond_raster_polys$selected <- species_count_raster_output$metric_raster_polys
+                     
+                     
+                   }
+                   
+                   count_pal <- colorNumeric("Reds", dangermond_raster_polys$selected$metric, na.color = grey(.7))
+                   
+                   m <- leafletProxy("main_map") %>%
+                     clearShapes() %>%
+                     clearMarkerClusters() %>%
+                     clearMarkers() %>%
+                     leaflet::addMapPane("metric_raster", zIndex = 500) %>% # Add basemap 3
+                     leaflet::addPolygons(data = dangermond_raster_polys$selected,
+                                          layerId = ~ID,
+                                          color = "black",
+                                          fillColor = ~count_pal(dangermond_raster_polys$selected$metric),
+                                          opacity = 0.5,
+                                          fillOpacity = 0.75,
+                                          weight = 1,
+                                          options = pathOptions(pane = "metric_raster"),
+                                          highlightOptions = highlightOptions(opacity = 0.5, weight = 2, bringToFront = TRUE, fillOpacity = 0.9),
+                                          label = dangermond_raster_polys$selected$metric, labelOptions = labelOptions(textOnly = TRUE, direction = "center", textsize = "15px", sticky = FALSE, style = list("color" = "black")) # offset = c(-5, 0)),
+                     ) %>%
+                     leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
+                     leaflet::addPolygons(data = dangermond_preserve,
+                                          color = "black",
+                                          opacity = 1,
+                                          fillColor = "transparent",
+                                          fillOpacity = 0,
+                                          options = pathOptions(pane = "preserve_boundary"),
+                                          weight = 3
+                     )
+                   
+                 }
+                 
+                 m
+                 
+                 updateSelectizeInput(inputId = "select_species", session = session, 
+                                      choices = filtered_data() %>%
+                                        dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
+                                        dplyr::pull(scientificName) %>% 
+                                       as.character() %>% 
+                                        unique() %>% 
+                                        sort(),
+                                      selected = NULL, server = TRUE)
+                 
   })
+
+  observeEvent(input$records_table_rows_selected, {
+
+  if (!is.null(input$records_table_rows_selected)){
+
+    shinybusy::show_modal_spinner("circle", color = "#024b6c") # show the modal window
+
+    if (!is.null(input$records_table_rows_selected)){
+      dat <- filtered_data() %>%
+        dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>%
+        dplyr::arrange(desc(eventDate))
+      selected_records$points <- dat[input$records_table_rows_selected, ]
+    }
+
+    m <- leafletProxy("main_map") %>%
+      clearGroup("Selected") %>%
+      leaflet::addMapPane("records_selected", zIndex = 500) %>%
+      addCircleMarkers(
+        data = selected_records$points,
+        lng = ~longitude,
+        lat = ~latitude,
+        fillColor = "#fdae61",
+        fillOpacity = 0.9,
+        color = "#fdae61",
+        options = pathOptions(pane = "records_selected"),
+        group = "Selected",
+        popup = leafpop::popupTable(selected_records$points %>%
+                                      st_set_geometry(NULL) %>%
+                                      dplyr::mutate(
+                                        URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
+                                      ), row.numbers = FALSE, feature.id = FALSE),
+        popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
+      )
+
+    m
+
+    shinybusy::remove_modal_spinner()
+
+  } else {
+
+    m <- leafletProxy("main_map") %>%
+      clearGroup("Selected")
+
+    selected_records$points <- integrated_dangermond_occurrences_sf[1, ][-1, ]
+
+  }
+
+})
   
   output$records_table <- DT::renderDataTable({
     
@@ -523,149 +371,7 @@ function(input, output, session) {
       )
     
   })
-
-  output$species_table <- DT::renderDataTable({
-
-    dat <- filtered_data() %>%
-      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-      sf::st_set_geometry(NULL) %>%
-      dplyr::arrange(desc(eventDate %>% as.Date())) %>%
-      dplyr::distinct(scientificName, .keep_all = TRUE) %>%
-      dplyr::select(scientificName, eventDate, URL, classification_path) %>%
-      dplyr::arrange(scientificName) %>% 
-      dplyr::mutate(
-        URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-      ) %>%
-      dplyr::rename("Scientific name" = scientificName,
-                    "Last Observation Date" = eventDate,
-                    "Last Observation URL" = URL,
-                    "Taxonomy" = classification_path
-      ) %>%
-      datatable(options = list(dom = 'tp',
-                               pageLength = 8,
-                               columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
-                               language = list(emptyTable = 'There are no estimates for these taxa')
-      ),
-      # filter = list(position = 'top'),
-      selection = list(mode = 'multiple', target = 'row', selected = NULL),
-      escape = FALSE,
-      rownames = FALSE
-      )
-    
-  })
-
-  output$northern_limits_table <- DT::renderDataTable({
-
-    dat <- dangermond_northern_limit$occurrences %>%
-      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-      sf::st_set_geometry(NULL) %>%
-      dplyr::arrange(scientificName, desc(eventDate %>% as.Date())) %>% 
-      dplyr::select(scientificName, eventDate, URL, classification_path) %>%
-      dplyr::mutate(
-        URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-      ) %>%
-      dplyr::rename("Scientific name" = scientificName,
-                    "Observation Date" = eventDate,
-                    "Observation URL" = URL,
-                    "Taxonomy" = classification_path
-      ) %>%
-      datatable(options = list(dom = 'tp',
-                               pageLength = 8,
-                               columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
-                               language = list(emptyTable = 'There are no estimates for these taxa')
-      ),
-      # filter = list(position = 'top'),
-      selection = list(mode = 'multiple', target = 'row', selected = NULL),
-      escape = FALSE,
-      rownames = FALSE
-      )
-
-  })
-
-  output$southern_limits_table <- DT::renderDataTable({
-
-    dat <- dangermond_southern_limit$occurrences %>%
-      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-      sf::st_set_geometry(NULL) %>%
-      dplyr::arrange(scientificName, desc(eventDate %>% as.Date())) %>% 
-      dplyr::select(scientificName, eventDate, URL, classification_path) %>%
-      dplyr::mutate(
-        URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-      ) %>%
-      dplyr::rename("Scientific name" = scientificName,
-                    "Observation Date" = eventDate,
-                    "Observation URL" = URL,
-                    "Taxonomy" = classification_path
-      ) %>%
-      datatable(options = list(dom = 'tp',
-                               pageLength = 8,
-                               columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
-                               language = list(emptyTable = 'There are no estimates for these taxa')
-      ),
-      # filter = list(position = 'top'),
-      selection = list(mode = 'multiple', target = 'row', selected = NULL),
-      escape = FALSE,
-      rownames = FALSE
-      )
-
-  })
   
-  output$range_shifts_table <- DT::renderDataTable({
-
-    dat <- species_directionality$lines %>%
-      dplyr::bind_rows() 
-    
-    if (center_taxon$name != "Life"){
-      dat <- dat %>%
-        dplyr::filter_all(any_vars(. %in% center_taxon$name))
-    }
-
-    dat <- dat %>%
-      dplyr::arrange(taxon) %>%
-      dplyr::mutate(period = ifelse(period == 1, "pre-2002", "post-2002")) %>%
-      dplyr::select(taxon, period, X, Y, classification_path) %>%
-      dplyr::rename("Scientific name" = taxon,
-                    "Time Period" = period,
-                    "Center of Gravity Longitude" = X,
-                    "Center of Gravity Latitude" = Y,
-                    "Taxonomy" = classification_path
-      ) %>%
-      datatable(options = list(dom = 'tp',
-                               pageLength = 8,
-                               columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
-                               language = list(emptyTable = 'There are no estimates for these taxa')
-      ), 
-      selection = 'none',
-      escape = FALSE,
-      rownames = FALSE
-      ) %>% 
-      formatStyle('Time Period', backgroundColor = styleEqual(c('pre-2002', 'post-2002'), c("#4169E1", "#8b0000")))
-
-  })
-  
-  observeEvent(input$metric_switch, {
-
-    if (input$metric_switch %in% c("Records", "Species")){
-      updateSelectizeInput(inputId = "select_species", session = session, choices = integrated_dangermond_occurrences_filtered$occurrences$scientificName %>% sort(), selected = NULL, server = TRUE)
-    }
-
-    if (input$metric_switch == "Range Limits (Northern)"){
-
-      updateSelectizeInput(inputId = "select_species", session = session, choices = northern_species_names %>% sort(), selected = NULL, server = TRUE)
-    }
-
-    if (input$metric_switch == "Range Limits (Southern)"){
-
-      updateSelectizeInput(inputId = "select_species", session = session, choices = southern_species_names %>% sort(), selected = NULL, server = TRUE)
-    }
-
-    if (input$metric_switch == "Range Shifts"){
-
-      updateSelectizeInput(inputId = "select_species", session = session, choices = directionality_species_names %>% sort(), selected = NULL, server = TRUE)
-    }
-
-  })
-
   clicks <- reactiveValues(IDs = vector(mode = "character"))
   
   observeEvent(input$main_map_shape_click, {
@@ -685,103 +391,10 @@ function(input, output, session) {
     
   })
 
-  
-  observeEvent({
-    input$main_map_zoom
-    input$main_map_bounds
-  }, {
-
-    if (input$metric_switch != "Range Shifts"){
-
-    if (input$main_map_zoom > 14) {
-      
-      if (input$metric_switch == "Records") map_occ <- integrated_dangermond_occurrences_filtered$occurrences 
-      if (input$metric_switch == "Species") map_occ <- integrated_dangermond_occurrences_filtered$occurrences %>% 
-          dplyr::arrange(desc(eventDate %>% as.Date())) %>%
-          dplyr::distinct(scientificName, .keep_all = TRUE)
-      if (input$metric_switch == "Range Limits (Northern)") map_occ <- dangermond_northern_limit$occurrences %>%
-          dplyr::filter(key %in% dangermond_northern_limit$occurrences$key)
-      if (input$metric_switch == "Range Limits (Southern)") map_occ <- dangermond_southern_limit$occurrences %>%
-          dplyr::filter(key %in% dangermond_southern_limit$occurrences$key)
-
-      map_occ <- map_occ %>%
-          dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
-      
-      if (nrow(map_occ) > 0){
-
-      m <- leafletProxy("main_map") %>%
-        clearShapes() %>%
-        clearMarkerClusters() %>%
-        clearMarkers() %>%
-        leaflet::addMapPane("records", zIndex = 400) %>%
-        addCircleMarkers(
-          data = map_occ,
-          lng = ~longitude,
-          lat = ~latitude,
-          layerId = ~key,
-          fillColor = "#4169E1",
-          fillOpacity = 0.75,
-          color = grey(0.15),
-          options = pathOptions(pane = "records"),
-          group = "Records",
-          popup = leafpop::popupTable(map_occ %>%
-                                        st_set_geometry(NULL) %>%
-                                        dplyr::mutate(
-                                          URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-                                        ), row.numbers = FALSE, feature.id = FALSE),
-          popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
-        )
-      
-      } else {
-        m <- leafletProxy("main_map") %>%
-          clearShapes() %>%
-          clearMarkerClusters() %>%
-          clearMarkers()
-      }
-
-    } else {
-
-      count_pal <- colorNumeric("Reds", dangermond_raster_polys$selected$metric, na.color = grey(.7))
-
-      m <- leafletProxy("main_map") %>%
-        clearShapes() %>%
-        clearMarkerClusters() %>%
-        clearMarkers() %>%
-        leaflet::addMapPane("metric_raster", zIndex = 500) %>% # Add basemap 3
-        leaflet::addPolygons(data = dangermond_raster_polys$selected,
-                             layerId = ~ID,
-                             color = "black",
-                             fillColor = ~count_pal(dangermond_raster_polys$selected$metric),
-                             opacity = 0.5,
-                             fillOpacity = 0.75,
-                             weight = 1,
-                             options = pathOptions(pane = "metric_raster"),
-                             highlightOptions = highlightOptions(opacity = 0.5, weight = 2, bringToFront = TRUE, fillOpacity = 0.9),
-                             label = dangermond_raster_polys$selected$metric, labelOptions = labelOptions(textOnly = TRUE, direction = "center", textsize = "15px", sticky = FALSE, style = list("color" = "black")) # offset = c(-5, 0)),
-        ) %>%
-        leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
-        leaflet::addPolygons(data = dangermond_preserve,
-                             color = "black",
-                             opacity = 1,
-                             fillColor = "transparent",
-                             fillOpacity = 0,
-                             options = pathOptions(pane = "preserve_boundary"),
-                             weight = 3
-        )
-
-    }
-
-    m
-    }
-
-  }, ignoreNULL = TRUE)
-  
   output$time_plot <- dygraphs::renderDygraph({
 
-    if (input$metric_switch %in% c("Records", "Species")){
-      
-    dat <- integrated_dangermond_occurrences_filtered$occurrences %>% 
-      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+    dat <- filtered_data() %>%
+      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) 
 
     dat <- dat %>%
       dplyr::filter(year <= substr(Sys.Date(), 1, 4)) %>%
@@ -812,8 +425,6 @@ function(input, output, session) {
         axisLabelFormatter = "function(d){ return d.getFullYear() }"
       ) %>%
       dygraphs::dyRangeSelector()
-    
-    }
 
   })
   
@@ -862,7 +473,8 @@ function(input, output, session) {
   
   output$taxa_donut <- plotly::renderPlotly({
 
-    dat <- integrated_dangermond_occurrences_sf %>%
+    dat <- dat <- integrated_dangermond_occurrences_sf %>% 
+      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>%
       sf::st_set_geometry(NULL) %>%
       dplyr::distinct(kingdom, phylum, class, order, family, .keep_all = TRUE)
 
@@ -883,7 +495,7 @@ function(input, output, session) {
         parents = "data.0.parents"
       )),
       type = "sunburst",
-      level = "Life", #center_taxon$name,
+      level = center_taxon$name,
       idssrc = "kirudang:0:8e4421",
       ids = idees,
       maxdepth = 3,
@@ -950,16 +562,17 @@ function(input, output, session) {
   })
 
 
-   observeEvent(event_data(event = "plotly_sunburstclick",
+  observeEvent(event_data(event = "plotly_sunburstclick",
                           source = "taxa_plot",
                           priority = "event"), {
-
-                            updateSelectizeInput(inputId = "select_species", session = session, selected = NULL, server = TRUE)
                             
-                            dat <- integrated_dangermond_occurrences_sf
-
+                            # updateSelectizeInput(inputId = "select_species", session = session, selected = NULL, server = TRUE)
+                            
+                            dat <- integrated_dangermond_occurrences_sf %>% 
+                              dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+                            
                             clicked_taxa$taxon <- c(clicked_taxa$taxon, clickData()[["customdata"]])
-
+                            
                             if (!identical(clicked_taxa$taxon, "Life")){
                               if (length(clicked_taxa$taxon) == 1){
                                 center_taxon$name <- clickData()[["customdata"]]
@@ -973,7 +586,7 @@ function(input, output, session) {
                                 beforelast_taxon_path <- dat$classification_path[grep(beforelast, dat$classification_path)[1]]
                                 beforelast_taxon_path_names <- c("Life", (beforelast_taxon_path %>% strsplit("\\|"))[[1]])
                                 beforelast_taxon_path_names <- beforelast_taxon_path_names[-length(beforelast_taxon_path_names)]
-
+                                
                                 if (last != beforelast){
                                   if (grep(last, last_taxon_path_names) > grep(beforelast, last_taxon_path_names)){
                                     center_taxon$name <- last
@@ -987,156 +600,116 @@ function(input, output, session) {
                                   clicked_taxa$taxon[(length(clicked_taxa$taxon))] <- center_taxon$name
                                 }
                               }
-
+                              
                             }
-
+                            
+                            if (input$main_map_zoom > 14) {
+                              
+                              map_occ <- filtered_data() %>%
+                                dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+                              
+                              if (nrow(map_occ) > 0){
+                                
+                                m <- leafletProxy("main_map") %>%
+                                  clearShapes() %>%
+                                  clearMarkerClusters() %>%
+                                  clearMarkers() %>%
+                                  leaflet::addMapPane("records", zIndex = 400) %>%
+                                  addCircleMarkers(
+                                    data = map_occ,
+                                    lng = ~longitude,
+                                    lat = ~latitude,
+                                    layerId = ~key,
+                                    fillColor = "#4169E1",
+                                    fillOpacity = 0.75,
+                                    color = grey(0.15),
+                                    options = pathOptions(pane = "records"),
+                                    group = "Records",
+                                    popup = leafpop::popupTable(map_occ %>%
+                                                                  st_set_geometry(NULL) %>%
+                                                                  dplyr::mutate(
+                                                                    URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
+                                                                  ), row.numbers = FALSE, feature.id = FALSE),
+                                    popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
+                                  )
+                                
+                              } else {
+                                m <- leafletProxy("main_map") %>%
+                                  clearShapes() %>%
+                                  clearMarkerClusters() %>%
+                                  clearMarkers()
+                              }
+                              
+                            } else {
+                              
+                              if (input$metric_switch == "Records"){
+                                
+                                integrated_dangermond_occurrences_filtered$occurrences <- filtered_data()
+                                
+                                ## Generate record count raster
+                                record_count_raster_output <- get_count_raster(records = filtered_data() %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "records")
+                                
+                                ## Update reactive objects
+                                dangermond_rasters$records_count <- record_count_raster_output$metric_raster
+                                dangermond_raster_polys$records_count <- record_count_raster_output$metric_raster_polys
+                                dangermond_raster_polys$selected <- record_count_raster_output$metric_raster_polys
+                                
+                              }
+                              
+                              if (input$metric_switch == "Species"){
+                                
+                                ## Generate record count raster
+                                species_count_raster_output <- get_count_raster(records = filtered_data() %>% sf::st_set_geometry(NULL), base_raster = occurrences_raster, metric = "species")
+                                
+                                ## Update reactive objects
+                                dangermond_rasters$species_count <- species_count_raster_output$metric_raster
+                                dangermond_raster_polys$species_count <- species_count_raster_output$metric_raster_polys
+                                dangermond_raster_polys$selected <- species_count_raster_output$metric_raster_polys
+                                
+                                
+                              }
+                              
+                              count_pal <- colorNumeric("Reds", dangermond_raster_polys$selected$metric, na.color = grey(.7))
+                              
+                              m <- leafletProxy("main_map") %>%
+                                clearShapes() %>%
+                                clearMarkerClusters() %>%
+                                clearMarkers() %>%
+                                leaflet::addMapPane("metric_raster", zIndex = 500) %>% # Add basemap 3
+                                leaflet::addPolygons(data = dangermond_raster_polys$selected,
+                                                     layerId = ~ID,
+                                                     color = "black",
+                                                     fillColor = ~count_pal(dangermond_raster_polys$selected$metric),
+                                                     opacity = 0.5,
+                                                     fillOpacity = 0.75,
+                                                     weight = 1,
+                                                     options = pathOptions(pane = "metric_raster"),
+                                                     highlightOptions = highlightOptions(opacity = 0.5, weight = 2, bringToFront = TRUE, fillOpacity = 0.9),
+                                                     label = dangermond_raster_polys$selected$metric, labelOptions = labelOptions(textOnly = TRUE, direction = "center", textsize = "15px", sticky = FALSE, style = list("color" = "black")) # offset = c(-5, 0)),
+                                ) %>%
+                                leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
+                                leaflet::addPolygons(data = dangermond_preserve,
+                                                     color = "black",
+                                                     opacity = 1,
+                                                     fillColor = "transparent",
+                                                     fillOpacity = 0,
+                                                     options = pathOptions(pane = "preserve_boundary"),
+                                                     weight = 3
+                                )
+                              
+                            }
+                            
+                            m
+                            
+                            updateSelectizeInput(inputId = "select_species", session = session, 
+                                                 choices = filtered_data() %>%
+                                                   dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
+                                                   dplyr::pull(scientificName) %>% 
+                                                   as.character() %>% 
+                                                   unique() %>% 
+                                                   sort(),
+                                                 selected = NULL, server = TRUE)
+                            
                           })
-
-
-
-
   
-  # observeEvent(input$select_species, {
-  #   
-  #   if (!is.null(input$select_species)){
-  # 
-  #   integrated_dangermond_occurrences_filtered$occurrences <- integrated_dangermond_occurrences_filtered$occurrences <- integrated_dangermond_occurrences_sf %>%
-  #     dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-  #     dplyr::filter(scientificName == input$select_species)
-  #     
-  #   }
-  #   
-  #   if (is.null(input$select_species)){
-  #     
-  #     integrated_dangermond_occurrences_filtered$occurrences <- integrated_dangermond_occurrences_sf %>%
-  #       dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
-  #     
-  #     updateSelectizeInput(inputId = "select_species", session = session, choices = integrated_dangermond_occurrences_filtered$occurrences$scientificName)
-  #     
-  #   }
-  #   
-  # })
-  
-
- 
- # 
- # output$northern_limits_table <- DT::renderDataTable({
- #   
- #   dat <- dangermond_northern_limit_occurrences %>%
- #     dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
- #   
- #   if (center_taxon$name != "Life"){
- #     dat <- dat %>%
- #       dplyr::filter(rowID %in% (dat %>%
- #                                   dplyr::select(rowID, kingdom, phylum, class, order, family, genus, species) %>%
- #                                   dplyr::filter_all(any_vars(. %in% center_taxon$name)) %>%
- #                                   dplyr::pull(rowID))
- #       )
- #   }
- #   
- #   updateSelectizeInput(inputId = "select_species", session = session, choices = c("", dat$scientificName))
- #   
- #   dat <- dat %>% 
- #     dplyr::arrange(desc(eventDate %>% as.Date())) %>% 
- #     dplyr::distinct(scientificName, .keep_all = TRUE) %>% 
- #     dplyr::select(scientificName, eventDate, URL, classification_path) %>% 
- #     dplyr::mutate(
- #       URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
- #     ) %>% 
- #     dplyr::rename("Scientific name" = scientificName,
- #                   "Last Observation Date" = eventDate,
- #                   "Last Observation URL" = URL,
- #                   "Taxonomy" = classification_path
- #     ) %>% 
- #     datatable(options = list(dom = 'tp', 
- #                              pageLength = 8,
- #                              columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
- #                              language = list(emptyTable = 'You have not selected any occurrences')
- #     ), 
- #     # filter = list(position = 'top'),
- #     selection = list(mode = 'multiple', target = 'row', selected = NULL), 
- #     escape = FALSE, 
- #     rownames = FALSE
- #     )
- #   
- # })
- # 
- # output$southern_limits_table <- DT::renderDataTable({
- # 
- #   dat <- dangermond_southern_limit_occurrences %>%
- #     dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
- # 
- #   if (center_taxon$name != "Life"){
- #     dat <- dat %>%
- #       dplyr::filter(rowID %in% (dat %>%
- #                                   dplyr::select(rowID, kingdom, phylum, class, order, family, genus, species) %>%
- #                                   dplyr::filter_all(any_vars(. %in% center_taxon$name)) %>%
- #                                   dplyr::pull(rowID))
- #       )
- #   }
- # 
- #   updateSelectizeInput(inputId = "select_species", session = session, choices = c("", dat$scientificName))
- #   
- #   dat <- dat %>%
- #     dplyr::arrange(desc(eventDate %>% as.Date())) %>%
- #     dplyr::distinct(scientificName, .keep_all = TRUE) %>%
- #     dplyr::select(scientificName, eventDate, URL, classification_path) %>%
- #     dplyr::mutate(
- #       URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
- #     ) %>%
- #     dplyr::rename("Scientific name" = scientificName,
- #                   "Last Observation Date" = eventDate,
- #                   "Last Observation URL" = URL,
- #                   "Taxonomy" = classification_path
- #     ) %>%
- #     datatable(options = list(dom = 'tp',
- #                              pageLength = 8,
- #                              columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
- #                              language = list(emptyTable = 'You have not selected any occurrences')
- #     ),
- #     # filter = list(position = 'top'),
- #     selection = list(mode = 'multiple', target = 'row', selected = NULL),
- #     escape = FALSE,
- #     rownames = FALSE
- #     )
- # 
- # })
- # 
- # output$range_shifts_table <- DT::renderDataTable({
- #   
- #   dat <- species_directionality_lines %>%
- #     dplyr::bind_rows() %>% 
- #     dplyr::filter(Y >= input$main_map_bounds$south & Y <= input$main_map_bounds$north & X >= input$main_map_bounds$west & X <= input$main_map_bounds$east)
- #   
- #   if (center_taxon$name != "Life"){
- #     dat <- dat %>%
- #       dplyr::filter_all(any_vars(. %in% center_taxon$name))
- #   }
- #   
- #   # updateSelectizeInput(inputId = "select_species", session = session, choices = c("", dat$scientificName))
- #   
- #   dat <- dat %>%
- #     dplyr::arrange(taxon) %>% 
- #     dplyr::mutate(period = ifelse(period == 1, "pre-2002", "post-2002")) %>% 
- #     dplyr::select(taxon, period, X, Y, classification_path) %>%
- #     dplyr::rename("Scientific name" = taxon,
- #                   "Time Period" = period,
- #                   "Center of Gravity Longitude" = X,
- #                   "Center of Gravity Latitude" = Y,
- #                   "Taxonomy" = classification_path
- #     ) %>%
- #     datatable(options = list(dom = 'tp',
- #                              pageLength = 8,
- #                              columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
- #                              language = list(emptyTable = 'You have not selected any occurrences')
- #     ),
- #     # filter = list(position = 'top'),
- #     selection = list(mode = 'multiple', target = 'row', selected = NULL),
- #     escape = FALSE,
- #     rownames = FALSE
- #     )
- #   
- # })
- 
-
 }
