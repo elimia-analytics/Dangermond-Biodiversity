@@ -1,0 +1,197 @@
+---
+title: "Identifying hotspots of plant species range limits across California"
+output: rmarkdown::html_vignette
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Load and/or install required packages
+```{r setup}
+## Identify required package names
+### CRAN packages
+cran_packages <- c("tidyverse", "sf", "terra", "tmap")
+## Install CRAN packages not yet installed
+installed_cran_packages <- cran_packages %in% rownames(installed.packages())
+if (any(installed_cran_packages == FALSE)) {
+  install.packages(cran_packages[!installed_cran_packages])
+}
+## Load all packages
+invisible(lapply(cran_packages, library, character.only = TRUE))
+```
+
+# Get geographical boundary layers
+```{r, include = FALSE, echo = FALSE}
+## Get California boundary
+ca_boundary <- USA.state.boundaries::state_boundaries_wgs84[USA.state.boundaries::state_boundaries_wgs84$STATE_ABBR == "CA", ]
+## Get Dangermond Preserve boundary
+dangermond_preserve <- esri2sf::esri2sf("https://services.arcgis.com/F7DSX1DSNSiWmOqh/arcgis/rest/services/jldp_boundary/FeatureServer/2")
+```
+
+# Load plant species distribution models from Kling et al. (2018)
+# downloaded from https://github.com/matthewkling/facets-of-phylodiversity/releases/tag/data810m
+```{r, include = FALSE, echo = FALSE}
+source("calculate_range_limit_probabilities.R")
+dir.create("range_limit_rasters")
+model_files <- list.files("data/Kling_et_al_2018", full.names = TRUE)
+future::plan("multisession", workers = 3)
+furrr::future_map(model_files[4400:length(model_files)], function(mod){
+  prob_raster <- terra::rast(mod)
+  r <- prob_raster
+  values(r)[which(values(r) == 0)] <- NA
+  r <- r %>% terra::trim()
+  if (terra::ymax(r) <= -72000){
+    n_edge_raster <- calculate_range_limit_probabilities(probability_raster = prob_raster, limit = "northern")
+    terra::writeRaster(n_edge_raster$latitudinal_probability_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_northern_probability.tif"), overwrite = TRUE)
+    terra::writeRaster(n_edge_raster$edge_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_northern_edge_limit.tif"), overwrite = TRUE)
+  }
+  if (terra::ymin(r) >= -590000){
+    s_edge_raster <- calculate_range_limit_probabilities(probability_raster = prob_raster, limit = "southern")
+    terra::writeRaster(s_edge_raster$latitudinal_probability_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_southern_probability.tif"), overwrite = TRUE)    
+    terra::writeRaster(s_edge_raster$edge_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_southern_edge_limit.tif"), overwrite = TRUE)
+  }
+    rm(s_edge_raster, n_edge_raster)
+  gc()
+})
+```
+
+## Quantify range limit hotspots
+```{r, include = FALSE, echo = FALSE}
+### Southern range limit hotspots
+southern_edge_limit_files <- list.files("plant_range_limit_rasters", pattern = "southern_edge_limit.tif", full.names = TRUE)
+southern_edge_limit_rasters <- terra::rast(purrr::map(southern_edge_limit_files, terra::rast))
+southern_edge_limit_hotspots <- terra::app(southern_edge_limit_rasters, sum, na.rm = TRUE)
+
+### Northern range limits hotspots
+northern_edge_limit_files <- list.files("plant_range_limit_rasters", pattern = "northern_edge_limit.tif", full.names = TRUE)
+northern_edge_limit_rasters <- terra::rast(purrr::map(northern_edge_limit_files, terra::rast))
+northern_edge_limit_hotspots <- terra::app(northern_edge_limit_rasters, sum, na.rm = TRUE)
+```
+
+## Quantify latitudinal limit hotspots
+```{r, include = FALSE, echo = FALSE}
+### Southern latitudinal limit hotspots
+southern_latitude_limit_files <- list.files("plant_range_limit_rasters", pattern = "southern_probability.tif", full.names = TRUE)
+southern_latitude_limit_rasters <- terra::rast(purrr::map(southern_latitude_limit_files, terra::rast))
+southern_latitude_limit_hotspots <- terra::app(southern_latitude_limit_rasters, sum, na.rm = TRUE)
+### Northern latitudinal limit hotspots
+northern_latitude_limit_files <- list.files("plant_range_limit_rasters", pattern = "northern_probability.tif", full.names = TRUE)
+northern_latitude_limit_rasters <- terra::rast(purrr::map(northern_latitude_limit_files, terra::rast))
+northern_latitude_limit_hotspots <- terra::app(northern_latitude_limit_rasters, sum, na.rm = TRUE)
+```
+
+## Map range/latitudinal limit hotspots
+```{r, include = FALSE, echo = FALSE}
+## Generate static maps
+d_vect <- dangermond_preserve %>% 
+  sf::st_transform(st_crs(southern_edge_limit_hotspots)) %>% 
+  terra::vect() 
+### Southern Range Limit Hotspots
+#### California
+terra::plot(southern_edge_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+#### Dangermond Preserve
+r <- southern_edge_limit_hotspots %>% 
+  terra::crop(d_vect) %>% 
+  terra::extend(5)
+terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+terra::plot(d_vect, add = TRUE)
+### Southern Latitudinal Limit Hotspots
+#### California
+terra::plot(southern_latitude_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+#### Dangermond Preserve
+r <- southern_latitude_limit_hotspots %>% 
+  terra::crop(d_vect) %>% 
+  terra::extend(5)
+terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+terra::plot(d_vect, add = TRUE)
+### Northern Range Limit Hotspots
+#### California
+terra::plot(southern_edge_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+#### Dangermond Preserve
+r <- northern_edge_limit_hotspots %>% 
+  terra::crop(d_vect) %>% 
+  terra::extend(5)
+terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+terra::plot(d_vect, add = TRUE)
+### Northern Latitudinal Limit Hotspots
+#### California
+terra::plot(northern_latitude_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+#### Dangermond Preserve
+r <- northern_latitude_limit_hotspots %>% 
+  terra::crop(d_vect) %>% 
+  terra::extend(5)
+terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+terra::plot(d_vect, add = TRUE)
+
+### Generate interactive map
+library(leaflet)
+col_pal1 <- colorNumeric("Spectral", values(southern_edge_limit_hotspots), na.color = "transparent")
+col_pal2 <- colorNumeric("Spectral", values(southern_latitude_limit_hotspots), na.color = "transparent")
+col_pal3 <- colorNumeric("Spectral", values(northern_edge_limit_hotspots), na.color = "transparent")
+col_pal4 <- colorNumeric("Spectral", values(northern_latitude_limit_hotspots), na.color = "transparent")
+legend_pal <- colorNumeric("Spectral", seq(0, 1, 0.1), na.color = "transparent")
+
+m <- leaflet::leaflet(options = leafletOptions(zoomDelta = 0.5, zoomSnap = 0, attributionControl = FALSE)) %>% # Open new leaflet web map
+    leaflet::setView(lng = -120, lat = 37.5, zoom = 6) %>%  # Zoom in on North America
+    leaflet::addMapPane("basemap1", zIndex = -100) %>% # Add basemap 1
+    leaflet::addProviderTiles(providers$Esri.WorldTerrain, group = "Esri World Terrain", options = list(pathOptions(pane = "basemap1"))) %>%
+    leaflet::addScaleBar(position = "bottomleft") %>% # Add scale bar
+    leaflet.extras::addResetMapButton() %>% # Add button to reset map bounds
+    leaflet::addLayersControl(baseGroups = c("Esri World Terrain"),
+                              overlayGroups = c("Southern Range Limit Hotspots",
+                                                   "Southern Latitudinal Limit Hotspots",
+                                                   "Northern Range Limit Hotspots",
+                                                   "Northern Latitudinal Limit Hotspots"),
+                              options = layersControlOptions(collapsed = TRUE), position = "topleft") %>% 
+        leaflet::addMapPane("southern_range", zIndex = 400) %>%
+      leaflet::addRasterImage(
+        x = southern_edge_limit_hotspots %>% terra::project("epsg:3857"),
+        colors = col_pal1,
+        opacity = 0.9,
+        project = FALSE,
+        group = "Southern Range Limit Hotspots",
+        maxBytes = Inf,
+        options = leaflet::pathOptions(pane = "southern_range")
+      ) %>% 
+      leaflet::addMapPane("southern_latitude", zIndex = 400) %>%
+      leaflet::addRasterImage(
+        x = southern_latitude_limit_hotspots %>% terra::project("epsg:3857"),
+        colors = col_pal2,
+        opacity = 0.9,
+        project = FALSE,
+        group = "Southern Latitudinal Limit Hotspots",
+        maxBytes = Inf,
+        options = leaflet::pathOptions(pane = "southern_latitude")
+      ) %>% 
+          leaflet::addMapPane("northern_range", zIndex = 400) %>%
+      leaflet::addRasterImage(
+        x = northern_edge_limit_hotspots %>% terra::project("epsg:3857"),
+        colors = col_pal3,
+        opacity = 0.9,
+        project = FALSE,
+        group = "Northern Range Limit Hotspots",
+        maxBytes = Inf,
+        options = leaflet::pathOptions(pane = "northern_range")
+      ) %>% 
+      leaflet::addMapPane("northern_latitude", zIndex = 400) %>%
+      leaflet::addRasterImage(
+        x = northern_latitude_limit_hotspots %>% terra::project("epsg:3857"),
+        colors = col_pal4,
+        opacity = 0.9,
+        project = FALSE,
+        group = "Northern Latitudinal Limit Hotspots",
+        maxBytes = Inf,
+        options = leaflet::pathOptions(pane = "northern_latitude")
+      ) %>%
+      leaflet::addLegend(pal = legend_pal, values = seq(0, 1, 0.1), labels = c(""), position = "bottomleft") %>%  # Add legend to describe layers to be mapped
+leaflet::hideGroup("Southern Latitudinal Limit Hotspots") %>% 
+leaflet::hideGroup("Northern Range Limit Hotspots") %>%
+leaflet::hideGroup("Northern Latitudinal Limit Hotspots")
+
+```
