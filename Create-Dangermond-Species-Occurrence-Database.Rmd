@@ -232,6 +232,40 @@ integrated_occurrences_dangermond <- integrated_occurrences_dangermond %>%
 integrated_occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
 ```
 
+# Integrate Conservation Status Information
+```{r, include = FALSE, echo = FALSE}
+# Extract dangermond GBIF taxon names
+dangermond_taxa <- integrated_dangermond_occurrences$species %>% unique()
+dangermond_taxa <- dangermond_taxa[-which(dangermond_taxa %in% c(NA, ""))]
+# Extract NatureServe information on CDFW State Rank, NatureServe Global Rank, US ESA Status, and IUCN Red List Category
+dangermond_taxa_conservation_statuses <- purrr::map(dangermond_taxa, function(sp){
+  print(paste0(sp, " (", round(which(dangermond_taxa %in% sp)/length(dangermond_taxa), 4), "%)"))
+  x <- natserv::ns_search_spp(text_adv = list(searchToken = sp, matchAgainst = "allScientificNames", operator="equals"))$results
+  if (nrow(x) > 0){
+     y <- natserv::ns_id(uid = x$uniqueId[1])
+  out <- data.frame(species = sp,
+    California_srank = ifelse(sum((y$elementNationals$elementSubnationals %>% bind_rows())$subnation$nameEn == "California") > 0, (y$elementNationals$elementSubnationals %>% bind_rows())$roundedSRank[which((y$elementNationals$elementSubnationals %>% bind_rows())$subnation$nameEn == "California")], NA),
+                    grank = y$roundedGRank,
+                    esa = ifelse(!is.null(y$speciesGlobal$usesa), y$speciesGlobal$usesa$usesaDescEn, NA),
+                    iucn = ifelse(!is.null(y$iucn), y$iucn$iucnDescEn, NA)
+  ) 
+  } else {
+    out <- data.frame(species = sp,
+                      California_srank = NA,
+                      grank = NA,
+                      esa = NA,
+                      iucn = NA
+    )
+  }
+  out
+}) %>% 
+  bind_rows()
+## Bind conservation status information to occurrences data
+integrated_occurrences_dangermond <- integrated_occurrences_dangermond %>% 
+  dplyr::left_join(dangermond_taxa_conservation_statuses, by = "species")
+### Save output as CSV
+integrated_occurrences_dangermond %>% readr::write_csv(paste0("data/integrated_occurrences_dangermond.csv"))
+```
 
 
 ## Other biodiversity data layers
