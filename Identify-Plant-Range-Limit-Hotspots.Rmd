@@ -38,6 +38,7 @@ dangermond_preserve <- esri2sf::esri2sf("https://services.arcgis.com/F7DSX1DSNSi
 # downloaded from https://github.com/matthewkling/facets-of-phylodiversity/releases/tag/data810m
 ```{r, include = FALSE, echo = FALSE}
 source("calculate_range_limit_probabilities.R")
+# download function from GitHub repository: https://raw.githubusercontent.com/elimia-analytics/Dangermond-Biodiversity/refs/heads/main/calculate_range_limit_probabilities.R
 dir.create("range_limit_rasters")
 model_files <- list.files("data/Kling_et_al_2018", full.names = TRUE)
 future::plan("multisession", workers = 3)
