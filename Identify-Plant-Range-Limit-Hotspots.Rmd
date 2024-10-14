@@ -34,31 +34,35 @@ ca_boundary <- USA.state.boundaries::state_boundaries_wgs84[USA.state.boundaries
 dangermond_preserve <- esri2sf::esri2sf("https://services.arcgis.com/F7DSX1DSNSiWmOqh/arcgis/rest/services/jldp_boundary/FeatureServer/2")
 ```
 
-# Load plant species distribution models from Kling et al. (2018)
+# Load plant species distribution models from Kling et al. (2018) and calculate plant range limits
 # downloaded from https://github.com/matthewkling/facets-of-phylodiversity/releases/tag/data810m
 ```{r, include = FALSE, echo = FALSE}
-source("calculate_range_limit_probabilities.R")
+source("~/calculate_range_limit_probabilities.R")
 # download function from GitHub repository: https://raw.githubusercontent.com/elimia-analytics/Dangermond-Biodiversity/refs/heads/main/calculate_range_limit_probabilities.R
-dir.create("range_limit_rasters")
+dir.create("plant_range_limit_rasters")
 model_files <- list.files("data/Kling_et_al_2018", full.names = TRUE)
 future::plan("multisession", workers = 3)
-furrr::future_map(model_files[4400:length(model_files)], function(mod){
+furrr::future_map(model_files[1:length(model_files)], function(mod){
   prob_raster <- terra::rast(mod)
+  prob_raster <- terra::aggregate(prob_raster, 2)
   r <- prob_raster
   values(r)[which(values(r) == 0)] <- NA
   r <- r %>% terra::trim()
-  if (terra::ymax(r) <= -72000){
+  # Calculate plant northern range limits
+  if (terra::ymax(r) <= (ymax(prob_raster)-10000)){
     n_edge_raster <- calculate_range_limit_probabilities(probability_raster = prob_raster, limit = "northern")
-    terra::writeRaster(n_edge_raster$latitudinal_probability_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_northern_probability.tif"), overwrite = TRUE)
-    terra::writeRaster(n_edge_raster$edge_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_northern_edge_limit.tif"), overwrite = TRUE)
+    terra::writeRaster(n_edge_raster$latitudinal_probability_raster, paste0("plant_range_limit_rasters/", prob_raster %>% names(), "_northern_probability.tif"), overwrite = TRUE)
+    terra::writeRaster(n_edge_raster$edge_raster, paste0("plant_range_limit_rasters/", prob_raster %>% names(), "_northern_edge_limit.tif"), overwrite = TRUE)
   }
-  if (terra::ymin(r) >= -590000){
+  # Calculate plant southern range limits
+  if (terra::ymin(r) >= (ymin(prob_raster)+10000)){
     s_edge_raster <- calculate_range_limit_probabilities(probability_raster = prob_raster, limit = "southern")
-    terra::writeRaster(s_edge_raster$latitudinal_probability_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_southern_probability.tif"), overwrite = TRUE)    
-    terra::writeRaster(s_edge_raster$edge_raster, paste0("range_limit_rasters/", prob_raster %>% names(), "_southern_edge_limit.tif"), overwrite = TRUE)
+    terra::writeRaster(s_edge_raster$latitudinal_probability_raster, paste0("plant_range_limit_rasters/", prob_raster %>% names(), "_southern_probability.tif"), overwrite = TRUE)    
+    terra::writeRaster(s_edge_raster$edge_raster, paste0("plant_range_limit_rasters/", prob_raster %>% names(), "_southern_edge_limit.tif"), overwrite = TRUE)
   }
     rm(s_edge_raster, n_edge_raster)
   gc()
+  NULL
 })
 ```
 

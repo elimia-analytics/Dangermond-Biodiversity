@@ -11,12 +11,12 @@ calculate_range_limit_probabilities <- function(probability_raster, limit = c("s
   })
   ## Extract cumulative latitudinal probability values
   latitudinal_cumulative_sum <- purrr::map_dbl(latitudinal_probability, function(x) ifelse(x[1] > 0, x[1], 0)) %>% cumsum()
-  ## If limit is southern focus on the cumulative lowest latitude 25% and the southern neighboring cells
+  ## If limit is southern focus on the cumulative lowest latitude 10% and the southern neighboring cells
   if (limit == "southern"){
     limit_cells <- which(latitudinal_cumulative_sum/max(latitudinal_cumulative_sum, na.rm = TRUE) >= .9)
     adjacent_cell_index <- 4
   }
-  ## If limit is northern focus on the cumulative highest latitude 25% and the northern neighboring cells
+  ## If limit is northern focus on the cumulative highest latitude 10% and the northern neighboring cells
   if (limit == "northern"){
     limit_cells <- which(latitudinal_cumulative_sum/max(latitudinal_cumulative_sum, na.rm = TRUE) <= .1)
     adjacent_cell_index <- 1
