@@ -96,44 +96,58 @@ northern_latitude_limit_hotspots <- terra::app(northern_latitude_limit_rasters, 
 ## Generate static maps
 d_vect <- dangermond_preserve %>% 
   sf::st_transform(st_crs(southern_edge_limit_hotspots)) %>% 
-  terra::vect() 
+  terra::vect()
+d_bbox <- southern_edge_limit_hotspots %>% 
+  terra::crop(d_vect) %>% 
+  terra::extend(15)
 ### Southern Range Limit Hotspots
 #### California
+png(filename = "output/california_plant_range_southern_edge_hotspots.png")
 terra::plot(southern_edge_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+dev.off()
 #### Dangermond Preserve
+png(filename = "output/dangermond_plant_range_southern_edge_hotspots.png")
 r <- southern_edge_limit_hotspots %>% 
-  terra::crop(d_vect) %>% 
-  terra::extend(5)
+  terra::crop(d_bbox)
 terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
 terra::plot(d_vect, add = TRUE)
+dev.off()
 ### Southern Latitudinal Limit Hotspots
 #### California
+png(filename = "output/california_plant_southern_latitude_limit_hotspots.png")
 terra::plot(southern_latitude_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+dev.off()
 #### Dangermond Preserve
+png(filename = "output/dangermond_plant_southern_latitude_limit_hotspots.png")
 r <- southern_latitude_limit_hotspots %>% 
-  terra::crop(d_vect) %>% 
-  terra::extend(5)
+  terra::crop(d_bbox)
 terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
 terra::plot(d_vect, add = TRUE)
+dev.off()
 ### Northern Range Limit Hotspots
 #### California
-terra::plot(southern_edge_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+png(filename = "output/california_plant_range_northern_edge_hotspots.png")
+terra::plot(northern_edge_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+dev.off()
 #### Dangermond Preserve
+png(filename = "output/dangermond_plant_range_northern_edge_hotspots.png")
 r <- northern_edge_limit_hotspots %>% 
-  terra::crop(d_vect) %>% 
-  terra::extend(5)
+  terra::crop(d_bbox)
 terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
 terra::plot(d_vect, add = TRUE)
+dev.off()
 ### Northern Latitudinal Limit Hotspots
 #### California
+png(filename = "output/california_plant_northern_latitude_limit_hotspots.png")
 terra::plot(northern_latitude_limit_hotspots, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
+dev.off()
 #### Dangermond Preserve
+png(filename = "output/dangermond_plant_northern_latitude_limit_hotspots.png")
 r <- northern_latitude_limit_hotspots %>% 
-  terra::crop(d_vect) %>% 
-  terra::extend(5)
+  terra::crop(d_bbox)
 terra::plot(r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
 terra::plot(d_vect, add = TRUE)
-
+dev.off()
 ### Generate interactive map
 library(leaflet)
 col_pal1 <- colorNumeric("Spectral", values(southern_edge_limit_hotspots), na.color = "transparent")
@@ -198,5 +212,7 @@ m <- leaflet::leaflet(options = leafletOptions(zoomDelta = 0.5, zoomSnap = 0, at
 leaflet::hideGroup("Southern Latitudinal Limit Hotspots") %>% 
 leaflet::hideGroup("Northern Range Limit Hotspots") %>%
 leaflet::hideGroup("Northern Latitudinal Limit Hotspots")
+
+m
 
 ```
