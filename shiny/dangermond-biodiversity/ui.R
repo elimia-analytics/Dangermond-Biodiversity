@@ -36,9 +36,16 @@ Shiny.addCustomMessageHandler(
 integrated_dangermond_occurrences <- read_csv("https://raw.githubusercontent.com/elimia-analytics/Dangermond-Biodiversity/main/data/integrated_occurrences_dangermond.csv")
 ### Identify dropdown taxon names
 records_species_names <- integrated_dangermond_occurrences$scientificName %>% unique() %>% sort()
-
+### Identify dropdown status ranks
+records_status_names <- list(
+  "California State Rank" = integrated_dangermond_occurrences$California_srank %>% unique() %>% sort(),
+  "NatureServe Global Rank" = integrated_dangermond_occurrences$grank %>% unique() %>% sort(),
+  "US ESA Status" = integrated_dangermond_occurrences$esa %>% unique() %>% sort(),
+  "IUCN Red List Status" = integrated_dangermond_occurrences$iucn %>% unique() %>% sort()
+)
+  
 #' # User Interface
-navbarPage(title = HTML("<span style='float: left; display: inline-block; padding-left: 20px;'><img src = 'tnc_logo.svg', height = '45'></span><span style='display: inline-block; padding: 5px 5px 35px 15px;'><h1 style = 'font-size: 28px'><strong>Dangermond Preserve Biodiversity Portal</strong></p></span>"), 
+navbarPage(title = HTML("<span style='float: left; display: inline-block; padding-left: 20px;'><img src = 'tnc_logo.svg', height = '45'></span><span style='display: inline-block; padding: 5px 5px 5px 15px;'><h1 style = 'font-size: 28px'><strong>Dangermond Preserve Biodiversity Portal</strong></p></span>"), 
            windowTitle = "Dangermond Preserve Biodiversity Portal", 
            id="nav", theme = "style.css",
            
@@ -74,10 +81,19 @@ navbarPage(title = HTML("<span style='float: left; display: inline-block; paddin
                         ),
                         column(width = 4,
                                fluidRow(style = "padding: 0px 20px 10px 20px;", shinycssloaders::withSpinner(dygraphOutput("time_plot", height = "50vh"), type = 4)),
-                               fluidRow(style = "padding-left: 20px;", h3("Select Species", style = "color: #337AB8 !important; font-size: 15px;")),
-                               fluidRow(style = "padding: 20px 10px 10px 20px;", shiny::selectizeInput(inputId = "select_species", label = "", choices = records_species_names, multiple = TRUE)),
-                               fluidRow(style = "padding-left: 20px;", h3("Or Select Taxon", style = "color: #337AB8 !important; font-size: 15px;")),
-                               fluidRow(style = "padding-bottom: 0;", shinycssloaders::withSpinner(plotlyOutput("taxa_donut", width = "100%", height = "100%"), type = 4))
+                               fluidRow(
+                                 column(width = 6,
+                                        fluidRow(style = "padding-left: 20px;", h3("Select Species", style = "color: #337AB8 !important; font-size: 15px;")),
+                                        fluidRow(style = "padding: 20px 20px 10px 20px;", shiny::selectizeInput(inputId = "select_species", label = "", choices = records_species_names, multiple = TRUE))
+                                        ),
+                                 column(width = 6,
+                                        fluidRow(style = "padding-left: 20px;", h3("Select Conservation Status", style = "color: #337AB8 !important; font-size: 15px;")),
+                                        fluidRow(style = "padding: 20px 20px 10px 20px;", shiny::selectizeInput(inputId = "select_status", label = "", choices = records_status_names, multiple = TRUE))
+                                        )
+                               ),
+                               fluidRow(style = "padding-left: 20px;", h3("Select Taxon", style = "color: #337AB8 !important; font-size: 15px;")),
+                               fluidRow(style = "padding-bottom: 0;", shinycssloaders::withSpinner(plotlyOutput("taxa_donut", width = "100%", height = "100%"), type = 4)),
+                               
                         )
                )
            ),

@@ -85,15 +85,12 @@ function(input, output, session) {
   
   ## Metric count raster
   dangermond_rasters <- reactiveValues(records_count = NULL,
-                                       species_count = NULL,
-                                       limits_north = NULL,
-                                       limits_south = NULL
+                                       species_count = NULL
   )
   dangermond_raster_polys <- reactiveValues(records_count = NULL,
                                             species_count = NULL,
-                                            limits_north = NULL,
-                                            limits_south = NULL,
                                             selected = NULL)
+  
   ## Objects to store clicks and center values from the taxon sunburst chart
   clicked_taxa <- reactiveValues(taxon = vector(mode = "character"))
   center_taxon <- reactiveValues(name = "Life")
@@ -111,19 +108,26 @@ function(input, output, session) {
   filtered_data <- reactive({
     
     if (!is.null(input$select_species)){
-      
-      out <- integrated_dangermond_occurrences_sf %>% 
+
+      out <- integrated_dangermond_occurrences_sf %>%
         dplyr::filter(scientificName == input$select_species)
       
     } else if (center_taxon$name != "Life"){
-      
+
       out <- integrated_dangermond_occurrences_sf %>%
         dplyr::filter_all(any_vars(. %in% center_taxon$name))
       
     } else {
-      
+
       out <- integrated_dangermond_occurrences_sf
+
+    }
+
+    if (!is.null(input$select_status)){
       
+        out <- out %>%
+          dplyr::filter_all(any_vars(. %in% input$select_status))
+        
     }
     
     out
@@ -136,8 +140,7 @@ function(input, output, session) {
     shinybusy::show_modal_spinner("circle", color = "#024b6c") # show the modal window
     
     points_bbox <- st_bbox(dangermond_preserve)
-    count_pal <- colorNumeric("Reds", dangermond_raster_polys$selected$metric, na.color = grey(.7))
-    
+
     m <- leaflet::leaflet(options = leafletOptions(zoomDelta = 0.5, zoomSnap = 0, attributionControl = FALSE, worldCopyJump = FALSE, scrollWheelZoom = FALSE)) %>% # Open new leaflet web map
       leaflet::fitBounds(points_bbox[[1]], points_bbox[[2]], points_bbox[[3]], points_bbox[[4]]) %>%  # Zoom in on North America
       leaflet::addMapPane("basemap1", zIndex = -100) %>% # Add basemap 1
@@ -155,15 +158,6 @@ function(input, output, session) {
                                 options = layersControlOptions(collapsed = TRUE), position = "topleft") %>%
       leafpm::addPmToolbar(toolbarOptions = leafpm::pmToolbarOptions(drawMarker = FALSE, drawCircle = FALSE, drawPolyline = FALSE, editMode = FALSE, cutPolygon = FALSE, removalMode = FALSE), # Add point/polygon drawing tools
                            drawOptions = leafpm::pmDrawOptions(snappable = FALSE, markerStyle = list(draggable = FALSE))
-      ) %>%
-      leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
-      leaflet::addPolygons(data = dangermond_preserve,
-                           color = "black",
-                           opacity = 1,
-                           fillColor = "transparent",
-                           fillOpacity = 0,
-                           options = pathOptions(pane = "preserve_boundary"),
-                           weight = 3
       ) 
     
     shinybusy::remove_modal_spinner()
@@ -172,57 +166,9 @@ function(input, output, session) {
     
   })
   
-  observeEvent({
-    input$metric_switch
-    input$main_map_zoom
-    input$main_map_bounds
-               }, {
+  observe({
 
-                 if (is.null(input$select_species)){
-                   
-                   integrated_dangermond_occurrences_filtered$occurrences <- integrated_dangermond_occurrences_sf
-                   
-                 }
-                 
-                 if (input$main_map_zoom > 14) {
-                   
-                   map_occ <- filtered_data() %>%
-                     dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
-                   
-                   if (nrow(map_occ) > 0){
-                     
-                     m <- leafletProxy("main_map") %>%
-                       clearShapes() %>%
-                       clearMarkerClusters() %>%
-                       clearMarkers() %>%
-                       leaflet::addMapPane("records", zIndex = 400) %>%
-                       addCircleMarkers(
-                         data = map_occ,
-                         lng = ~longitude,
-                         lat = ~latitude,
-                         layerId = ~key,
-                         fillColor = "#4169E1",
-                         fillOpacity = 0.75,
-                         color = grey(0.15),
-                         options = pathOptions(pane = "records"),
-                         group = "Records",
-                         popup = leafpop::popupTable(map_occ %>%
-                                                       st_set_geometry(NULL) %>%
-                                                       dplyr::mutate(
-                                                         URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
-                                                       ), row.numbers = FALSE, feature.id = FALSE),
-                         popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
-                       )
-                     
-                   } else {
-                     m <- leafletProxy("main_map") %>%
-                       clearShapes() %>%
-                       clearMarkerClusters() %>%
-                       clearMarkers()
-                   }
-                   
-                 } else {
-                   
+
                    if (input$metric_switch == "Records"){
                      
                      integrated_dangermond_occurrences_filtered$occurrences <- filtered_data()
@@ -256,6 +202,7 @@ function(input, output, session) {
                      clearShapes() %>%
                      clearMarkerClusters() %>%
                      clearMarkers() %>%
+                     clearControls() %>% 
                      leaflet::addMapPane("metric_raster", zIndex = 500) %>% # Add basemap 3
                      leaflet::addPolygons(data = dangermond_raster_polys$selected,
                                           layerId = ~ID,
@@ -267,30 +214,158 @@ function(input, output, session) {
                                           options = pathOptions(pane = "metric_raster"),
                                           highlightOptions = highlightOptions(opacity = 0.5, weight = 2, bringToFront = TRUE, fillOpacity = 0.9),
                                           label = dangermond_raster_polys$selected$metric, labelOptions = labelOptions(textOnly = TRUE, direction = "center", textsize = "15px", sticky = FALSE, style = list("color" = "black")) # offset = c(-5, 0)),
-                     ) %>%
-                     leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
-                     leaflet::addPolygons(data = dangermond_preserve,
-                                          color = "black",
-                                          opacity = 1,
-                                          fillColor = "transparent",
-                                          fillOpacity = 0,
-                                          options = pathOptions(pane = "preserve_boundary"),
-                                          weight = 3
+                     ) %>% 
+                     leaflet::addLegend(
+                       position = "bottomright",
+                       pal = count_pal,
+                       values = dangermond_raster_polys$selected$metric,
+                       title = paste0("Number of ", input$metric_switch)
                      )
-                   
-                 }
                  
                  m
+      
                  
-                 updateSelectizeInput(inputId = "select_species", session = session, 
-                                      choices = filtered_data() %>%
-                                        dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-                                        dplyr::pull(scientificName) %>% 
-                                       as.character() %>% 
-                                        unique() %>% 
-                                        sort(),
-                                      selected = NULL, server = TRUE)
-                 
+  })
+
+  observeEvent({
+    input$main_map_zoom
+    input$main_map_bounds
+  }, {
+    
+    if (is.null(input$select_species) & is.null(input$select_status)){
+      
+      out <- filtered_data() %>%
+        dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+      
+      updateSelectizeInput(inputId = "select_species", session = session,
+                           choices = out %>%
+                             dplyr::pull(scientificName) %>%
+                             as.character() %>%
+                             unique() %>%
+                             sort(),
+                           server = TRUE)
+      
+      records_status_names <- list(
+        "California State Rank" = out$California_srank %>% unique() %>% sort(),
+        "NatureServe Global Rank" = out$grank %>% unique() %>% sort(),
+        "US ESA Status" = out$esa %>% unique() %>% sort(),
+        "IUCN Red List Status" = out$iucn %>% unique() %>% sort()
+      )
+      
+      records_status_names <- records_status_names[purrr::map_lgl(records_status_names, function(x) length(x) > 0)]
+      
+      updateSelectizeInput(inputId = "select_status", session = session,
+                           choices = records_status_names,
+                           server = TRUE)
+    }
+    
+    if (!is.null(input$select_species)){
+      
+      out <- filtered_data() %>%
+        dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+      
+      records_status_names <- list(
+        "California State Rank" = out$California_srank %>% unique() %>% sort(),
+        "NatureServe Global Rank" = out$grank %>% unique() %>% sort(),
+        "US ESA Status" = out$esa %>% unique() %>% sort(),
+        "IUCN Red List Status" = out$iucn %>% unique() %>% sort()
+      )
+      
+      records_status_names <- records_status_names[purrr::map_lgl(records_status_names, function(x) length(x) > 0)]
+      
+      
+      updateSelectizeInput(inputId = "select_status", session = session,
+                           choices = records_status_names,
+                           server = TRUE)
+    }
+
+    if (!is.null(input$select_status)){
+    
+      out <- filtered_data() %>%
+        dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+      
+    updateSelectizeInput(inputId = "select_species", session = session,
+                         choices = out %>%
+                           dplyr::pull(scientificName) %>%
+                           as.character() %>%
+                           unique() %>%
+                           sort(),
+                         server = TRUE)
+    
+    }
+    
+  
+      if (input$main_map_zoom > 14) {
+
+        map_occ <- filtered_data() %>%
+          dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
+        
+        if (nrow(map_occ) > 0){
+          
+          m <- leafletProxy("main_map") %>%
+            clearShapes() %>%
+            clearMarkerClusters() %>%
+            clearMarkers() %>%
+            leaflet::addMapPane("records", zIndex = 400) %>%
+            addCircleMarkers(
+              data = map_occ,
+              lng = ~longitude,
+              lat = ~latitude,
+              layerId = ~key,
+              fillColor = "#4169E1",
+              fillOpacity = 0.75,
+              color = grey(0.15),
+              options = pathOptions(pane = "records"),
+              group = "Records",
+              popup = leafpop::popupTable(map_occ %>%
+                                            st_set_geometry(NULL) %>%
+                                            dplyr::mutate(
+                                              URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
+                                            ), row.numbers = FALSE, feature.id = FALSE),
+              popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
+            )
+          
+        } else {
+          m <- leafletProxy("main_map") %>%
+            clearShapes() %>%
+            clearMarkerClusters() %>%
+            clearMarkers()
+        }
+        
+      } else {
+        
+        count_pal <- colorNumeric("Reds", dangermond_raster_polys$selected$metric, na.color = grey(.7))
+        
+        m <- leafletProxy("main_map") %>%
+          clearShapes() %>%
+          clearMarkerClusters() %>%
+          clearMarkers() %>%
+          leaflet::addMapPane("metric_raster", zIndex = 500) %>% # Add basemap 3
+          leaflet::addPolygons(data = dangermond_raster_polys$selected,
+                               layerId = ~ID,
+                               color = "black",
+                               fillColor = ~count_pal(dangermond_raster_polys$selected$metric),
+                               opacity = 0.5,
+                               fillOpacity = 0.75,
+                               weight = 1,
+                               options = pathOptions(pane = "metric_raster"),
+                               highlightOptions = highlightOptions(opacity = 0.5, weight = 2, bringToFront = TRUE, fillOpacity = 0.9),
+                               label = dangermond_raster_polys$selected$metric, labelOptions = labelOptions(textOnly = TRUE, direction = "center", textsize = "15px", sticky = FALSE, style = list("color" = "black")) # offset = c(-5, 0)),
+          ) %>%
+          leaflet::addMapPane("preserve_boundary", zIndex = 200) %>% # Add basemap 3
+          leaflet::addPolygons(data = dangermond_preserve,
+                               color = "black",
+                               opacity = 1,
+                               fillColor = "transparent",
+                               fillOpacity = 0,
+                               options = pathOptions(pane = "preserve_boundary"),
+                               weight = 3
+          )
+        
+      }
+      
+      m
+
   })
 
   observeEvent(input$records_table_rows_selected, {
@@ -336,42 +411,47 @@ function(input, output, session) {
       clearGroup("Selected")
 
     selected_records$points <- integrated_dangermond_occurrences_sf[1, ][-1, ]
-
+    
   }
 
-})
+}, ignoreNULL = FALSE)
   
   output$records_table <- DT::renderDataTable({
-    
+
     dat <- filtered_data() %>%
-      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>% 
-      sf::st_set_geometry(NULL) %>% 
-      dplyr::select(scientificName, URL, longitude, latitude, coordinateUncertaintyInMeters, eventDate, source, dataset, classification_path) %>% 
+      dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east) %>%
+      sf::st_set_geometry(NULL) %>%
       dplyr::mutate(longitude = round(longitude, 3), latitude = round(latitude, 3),
-                    URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")) %>% 
-      dplyr::arrange(desc(eventDate)) %>% 
+                    URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
+                    ) %>%
+      dplyr::select(scientificName, URL, longitude, latitude, coordinateUncertaintyInMeters, eventDate, source, dataset, classification_path, California_srank, grank, esa, iucn) %>%
+      dplyr::arrange(desc(eventDate)) %>%
       dplyr::rename("Scientific name" = scientificName,
-                    "Longitude" = longitude, 
+                    "Longitude" = longitude,
                     "Latitude" = latitude,
                     "Coordinate Uncertainty (m)" = coordinateUncertaintyInMeters,
                     "Date" = eventDate,
                     "Source" = source,
                     "Dataset" = dataset,
-                    "Taxonomy" = classification_path
-      ) %>% 
-      datatable(options = list(dom = 'tp', 
+                    "Taxonomy" = classification_path,
+                    "California State Rank" = California_srank,
+                    "NatureServe Global Rank" = grank,
+                    "US ESA Status" = esa,
+                    "IUCN Red List Category" = iucn
+      ) %>%
+      datatable(options = list(dom = 'tp',
                                pageLength = 8,
                                columnDefs = list(list(width = "50%", className = 'dt-left', targets = "_all")),
                                language = list(emptyTable = 'There are no estimates for these taxa')
-      ), 
+      ),
       # filter = list(position = 'top'),
-      selection = list(mode = 'multiple', target = 'row', selected = NULL), 
-      escape = FALSE, 
+      selection = list(mode = 'multiple', target = 'row', selected = NULL),
+      escape = FALSE,
       rownames = FALSE
       )
-    
+
   })
-  
+
   clicks <- reactiveValues(IDs = vector(mode = "character"))
   
   observeEvent(input$main_map_shape_click, {
@@ -428,7 +508,7 @@ function(input, output, session) {
 
   })
   
-  observeEvent(input$start_over , {
+  observeEvent(input$start_over, {
     
     shinybusy::show_modal_spinner("circle", color = "#024b6c") # show the modal window
     
@@ -469,6 +549,30 @@ function(input, output, session) {
     
     shinybusy::remove_modal_spinner()
     
+      out <- integrated_dangermond_occurrences_sf 
+      
+      records_status_names <- list(
+        "California State Rank" = out$California_srank %>% unique() %>% sort(),
+        "NatureServe Global Rank" = out$grank %>% unique() %>% sort(),
+        "US ESA Status" = out$esa %>% unique() %>% sort(),
+        "IUCN Red List Status" = out$iucn %>% unique() %>% sort()
+      )
+      
+      records_status_names <- records_status_names[purrr::map_lgl(records_status_names, function(x) length(x) > 0)]
+      
+      
+      updateSelectizeInput(inputId = "select_status", session = session,
+                           choices = records_status_names,
+                           server = TRUE)
+
+      updateSelectizeInput(inputId = "select_species", session = session,
+                           choices = out %>%
+                             dplyr::pull(scientificName) %>%
+                             as.character() %>%
+                             unique() %>%
+                             sort(),
+                           server = TRUE)
+
   })
   
   output$taxa_donut <- plotly::renderPlotly({
@@ -566,8 +670,6 @@ function(input, output, session) {
                           source = "taxa_plot",
                           priority = "event"), {
                             
-                            # updateSelectizeInput(inputId = "select_species", session = session, selected = NULL, server = TRUE)
-                            
                             dat <- integrated_dangermond_occurrences_sf %>% 
                               dplyr::filter(latitude >= input$main_map_bounds$south & latitude <= input$main_map_bounds$north & longitude >= input$main_map_bounds$west & longitude <= input$main_map_bounds$east)
                             
@@ -578,26 +680,33 @@ function(input, output, session) {
                                 center_taxon$name <- clickData()[["customdata"]]
                               }
                               if (length(clicked_taxa$taxon) > 1){
-                                last <- clicked_taxa$taxon[length(clicked_taxa$taxon)]
-                                last_taxon_path <- dat$classification_path[grep(last, dat$classification_path)[1]]
-                                last_taxon_path_names <- c("Life", (last_taxon_path %>% strsplit("\\|"))[[1]])
-                                last_taxon_path_names <- last_taxon_path_names[-length(last_taxon_path_names)]
-                                beforelast <- clicked_taxa$taxon[(length(clicked_taxa$taxon)-1)]
-                                beforelast_taxon_path <- dat$classification_path[grep(beforelast, dat$classification_path)[1]]
-                                beforelast_taxon_path_names <- c("Life", (beforelast_taxon_path %>% strsplit("\\|"))[[1]])
-                                beforelast_taxon_path_names <- beforelast_taxon_path_names[-length(beforelast_taxon_path_names)]
                                 
-                                if (last != beforelast){
-                                  if (grep(last, last_taxon_path_names) > grep(beforelast, last_taxon_path_names)){
-                                    center_taxon$name <- last
-                                  } else {
+                                if (identical(unique(clicked_taxa$taxon), "Life")){
+                                  
+                                  center_taxon$name <- "Life"
+                                  
+                                } else {
+                                  last <- clicked_taxa$taxon[length(clicked_taxa$taxon)]
+                                  last_taxon_path <- dat$classification_path[grep(last, dat$classification_path)[1]]
+                                  last_taxon_path_names <- c("Life", (last_taxon_path %>% strsplit("\\|"))[[1]])
+                                  last_taxon_path_names <- last_taxon_path_names[-length(last_taxon_path_names)]
+                                  beforelast <- clicked_taxa$taxon[(length(clicked_taxa$taxon)-1)]
+                                  beforelast_taxon_path <- dat$classification_path[grep(beforelast, dat$classification_path)[1]]
+                                  beforelast_taxon_path_names <- c("Life", (beforelast_taxon_path %>% strsplit("\\|"))[[1]])
+                                  beforelast_taxon_path_names <- beforelast_taxon_path_names[-length(beforelast_taxon_path_names)]
+                                  
+                                  if (last != beforelast){
+                                    if (grep(last, last_taxon_path_names) > grep(beforelast, last_taxon_path_names)){
+                                      center_taxon$name <- last
+                                    } else {
+                                      center_taxon$name <- last_taxon_path_names[grep(last, last_taxon_path_names)-1]
+                                      clicked_taxa$taxon[(length(clicked_taxa$taxon))] <- center_taxon$name
+                                    }
+                                  }
+                                  if (last == beforelast){
                                     center_taxon$name <- last_taxon_path_names[grep(last, last_taxon_path_names)-1]
                                     clicked_taxa$taxon[(length(clicked_taxa$taxon))] <- center_taxon$name
                                   }
-                                }
-                                if (last == beforelast){
-                                  center_taxon$name <- last_taxon_path_names[grep(last, last_taxon_path_names)-1]
-                                  clicked_taxa$taxon[(length(clicked_taxa$taxon))] <- center_taxon$name
                                 }
                               }
                               
