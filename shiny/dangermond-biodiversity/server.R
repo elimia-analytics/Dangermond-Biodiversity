@@ -306,6 +306,7 @@ function(input, output, session) {
             clearShapes() %>%
             clearMarkerClusters() %>%
             clearMarkers() %>%
+            clearControls() %>% 
             leaflet::addMapPane("records", zIndex = 400) %>%
             addCircleMarkers(
               data = map_occ,
@@ -323,6 +324,12 @@ function(input, output, session) {
                                               URL = paste0("<a href='", URL, "' target='_blank' onmousedown='event.stopPropagation();'>", URL, "</a>")
                                             ), row.numbers = FALSE, feature.id = FALSE),
               popupOptions = popupOptions(maxWidth = 300, autoPan = FALSE, keepInView = TRUE)
+            ) %>% 
+            leaflet::addLegend(
+              position = "bottomright", 
+              colors = "#4169E1",
+              labels = "Biodiversity Records",
+              opacity = 0.75
             )
           
         } else {
@@ -340,6 +347,7 @@ function(input, output, session) {
           clearShapes() %>%
           clearMarkerClusters() %>%
           clearMarkers() %>%
+          clearControls() %>% 
           leaflet::addMapPane("metric_raster", zIndex = 500) %>% # Add basemap 3
           leaflet::addPolygons(data = dangermond_raster_polys$selected,
                                layerId = ~ID,
@@ -360,6 +368,12 @@ function(input, output, session) {
                                fillOpacity = 0,
                                options = pathOptions(pane = "preserve_boundary"),
                                weight = 3
+          ) %>% 
+          leaflet::addLegend(
+            position = "bottomright",
+            pal = count_pal,
+            values = dangermond_raster_polys$selected$metric,
+            title = paste0("Number of ", input$metric_switch)
           )
         
       }
