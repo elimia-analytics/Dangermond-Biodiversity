@@ -99,7 +99,13 @@ inat_occurrences_from_dangermond_project <- rinat::get_inat_obs_project(grpid = 
 ### Save output as csv
 inat_occurrences_from_dangermond_project %>% readr::write_csv("data/inat_occurrences_from_dangermond_project.csv")
 
-
+### Update search to include only data from a most recent data
+system.time({
+inat_occurrence_count_dangermond <- spocc::occ(from = "inat", limit = 1, geometry = dangermond_preserve_bbox, has_coords = TRUE, date = c('2024-01-01', '2024-10-21'))$inat$meta$found
+inat_occurrences_dangermond <- spocc::occ(from = "inat", limit = inat_occurrence_count_dangermond, geometry = dangermond_preserve_bbox, has_coords = TRUE, date = c('2024-01-01', '2024-10-21'))$inat$data[[1]]
+## Extract data from Dangermond Preserve iNaturalist project
+inat_occurrences_from_dangermond_project <- rinat::get_inat_obs_project(grpid = "dangermond-preserve-tnc")
+})
 ```
 
 ## CalFlora
