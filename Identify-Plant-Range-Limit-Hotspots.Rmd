@@ -96,7 +96,6 @@ northern_latitude_limit_hotspots <- terra::app(northern_latitude_limit_rasters, 
 
 
 ## Illustration of latitudinal limit quantification
-
 ## Generate static maps
 d_vect <- dangermond_preserve %>% 
   sf::st_transform(st_crs(southern_edge_limit_hotspots)) %>% 
@@ -104,17 +103,19 @@ d_vect <- dangermond_preserve %>%
 d_bbox <- southern_edge_limit_hotspots %>% 
   terra::crop(d_vect) %>% 
   terra::extend(15)
+d_bbox2 <- southern_edge_limit_hotspots %>% 
+  terra::crop(d_vect) %>% 
+  terra::extend(100)
 ## Illustration of latitudinal limit calculation
-latitudinal_limit_r <- terra::rast("~/Library/CloudStorage/Dropbox/elimia/projects/PCI-biogeography/deliverables/Activity 2 - Data Synthesis/code/dangermond-occurrence-data/plant_range_limit_rasters/Abies amabilis_southern_probability.tif") %>%
-  terra::crop(d_bbox)
+latitudinal_limit_r <- southern_latitude_limit_rasters[[8]] %>%
+  terra::crop(d_bbox2)
 #### California
 png(filename = "output/latitudinal_limit_calculation_illustration.png")
 terra::plot(latitudinal_limit_r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
 dev.off()
 ## Illustration of range edge calculation
-edge_r <- terra::rast("~/Library/CloudStorage/Dropbox/elimia/projects/PCI-biogeography/deliverables/Activity 2 - Data Synthesis/code/dangermond-occurrence-data/plant_range_limit_rasters/Abies amabilis_southern_edge_limit.tif") %>%
-  terra::crop(d_bbox)
-#### California
+edge_r <- southern_edge_limit_rasters[[8]] %>%
+  terra::crop(d_bbox2)
 png(filename = "output/range_edge_calculation_illustration.png")
 terra::plot(edge_r, axes = FALSE, box = FALSE, col = RColorBrewer::brewer.pal(9, "Spectral"))
 dev.off()
