@@ -72,11 +72,14 @@ furrr::future_map(model_files[1:length(model_files)], function(mod){
 southern_edge_limit_files <- list.files("plant_range_limit_rasters", pattern = "southern_edge_limit.tif", full.names = TRUE)
 southern_edge_limit_rasters <- terra::rast(purrr::map(southern_edge_limit_files, terra::rast))
 southern_edge_limit_hotspots <- terra::app(southern_edge_limit_rasters, sum, na.rm = TRUE)
+southern_edge_limit_hotspots %>% terra::writeRaster("california_plant_range_southern_edge_hotspots.tif", overwrite = TRUE)
 
 ### Northern range limits hotspots
 northern_edge_limit_files <- list.files("plant_range_limit_rasters", pattern = "northern_edge_limit.tif", full.names = TRUE)
 northern_edge_limit_rasters <- terra::rast(purrr::map(northern_edge_limit_files, terra::rast))
 northern_edge_limit_hotspots <- terra::app(northern_edge_limit_rasters, sum, na.rm = TRUE)
+northern_edge_limit_hotspots %>% terra::writeRaster("california_plant_range_northern_edge_hotspots.tif", overwrite = TRUE)
+
 ```
 
 ## Quantify latitudinal limit hotspots
@@ -85,10 +88,12 @@ northern_edge_limit_hotspots <- terra::app(northern_edge_limit_rasters, sum, na.
 southern_latitude_limit_files <- list.files("plant_range_limit_rasters", pattern = "southern_probability.tif", full.names = TRUE)
 southern_latitude_limit_rasters <- terra::rast(purrr::map(southern_latitude_limit_files, terra::rast))
 southern_latitude_limit_hotspots <- terra::app(southern_latitude_limit_rasters, sum, na.rm = TRUE)
+southern_latitude_limit_hotspots %>% terra::writeRaster("california_plant_southern_latitude_limit_hotspots.tif", overwrite = TRUE)
 ### Northern latitudinal limit hotspots
 northern_latitude_limit_files <- list.files("plant_range_limit_rasters", pattern = "northern_probability.tif", full.names = TRUE)
 northern_latitude_limit_rasters <- terra::rast(purrr::map(northern_latitude_limit_files, terra::rast))
 northern_latitude_limit_hotspots <- terra::app(northern_latitude_limit_rasters, sum, na.rm = TRUE)
+northern_latitude_limit_hotspots %>% terra::writeRaster("california_plant_northern_latitude_limit_hotspots.tif", overwrite = TRUE)
 ```
 
 ## Map range/latitudinal limit hotspots
