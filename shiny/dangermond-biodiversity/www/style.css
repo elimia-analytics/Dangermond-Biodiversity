@@ -21,19 +21,15 @@
 }
 
 .navbar {
-  font-family: 'Roboto', sans-serif;
-  background-color: white;
+  font-family: 'Roboto';
+  font-size: 16px;
+  background-color: transparent;
   position: relative;
   min-height: 50px;
   margin-bottom: 0;
   border: 1px solid transparent;
-  color: #1F417D;
-}
-
-.navbar-default .navbar-nav>.active>a {
-  font-family: 'Roboto', sans-serif;
-  color: #1F417D;
-    background-color: white;
+  color: #337ab7;
+  box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .075);
 }
 
 .navbar-default .navbar-brand {
@@ -43,6 +39,20 @@
   padding: 2px 10px 2px 10px;
 }
 
+.navbar-default .navbar-nav>.active>a, .navbar-default .navbar-nav>.active>a:focus, .navbar-default .navbar-nav>.active>a:hover {
+    color: #fff;
+    background-color: #337ab7;
+    border-radius: 4px;
+}
+
+.navbar-default .navbar-nav>li>a {
+    color: #337ab7;
+}
+
+.navbar-default .navbar-nav>li>a:focus, .navbar-default .navbar-nav>li>a:hover {
+    text-decoration: none;
+    background-color: #eee;
+}
 
 h1 {
   font-family: 'Cabin';
@@ -52,7 +62,7 @@ h1 {
 
 h2, h3, h4, h5, p {
   font-family: 'Roboto', sans-serif;
-  color: #1F417D;
+  color: #337ab7;
 }
 
 
@@ -136,4 +146,8 @@ table.dataTable {
 
 .user-select-none .svg-container {
   max-width: 200px !important;
+}
+
+.panel {
+  box-shadow: none !important;
 }
